@@ -1,0 +1,150 @@
+# install.ps1 — PowerShell 5+ installer for lybel-docs (Windows)
+#
+# Usage (one-liner):
+#   iwr -useb https://raw.githubusercontent.com/lybel-app/skills/main/cli/lybel-docs/install/install.ps1 | iex
+#
+# Environment variables (all optional):
+#   $env:LYBEL_DOCS_REPO      GitHub "owner/repo" (default: lybel-app/skills)
+#   $env:CLAUDE_HOME          Override Claude home dir (default: $env:USERPROFILE\.claude)
+#   $env:LYBEL_DOCS_VERSION   Specific release tag (default: latest)
+
+#Requires -Version 5.0
+$ErrorActionPreference = 'Stop'
+
+# ── config ────────────────────────────────────────────────────────────────────
+
+$Repo        = if ($env:LYBEL_DOCS_REPO)    { $env:LYBEL_DOCS_REPO }    else { 'lybel-app/skills' }
+$ClaudeHome  = if ($env:CLAUDE_HOME)         { $env:CLAUDE_HOME }         else { Join-Path $env:USERPROFILE '.claude' }
+$SkillDir    = Join-Path $ClaudeHome 'skills\lybel-docs'
+$BinDir      = Join-Path $SkillDir 'bin'
+$BinName     = 'lybel-docs.exe'
+$GithubBase  = "https://github.com/$Repo"
+$GithubRaw   = "https://raw.githubusercontent.com/$Repo/main"
+
+# ── detect arch ───────────────────────────────────────────────────────────────
+
+$Arch = switch ($env:PROCESSOR_ARCHITECTURE) {
+    'AMD64'  { 'amd64' }
+    'x86'    { 'amd64' }  # 32-bit host is rare; download 64-bit
+    'ARM64'  { 'arm64' }
+    default  { 'amd64' }
+}
+$Platform = "windows-$Arch"
+
+# ── determine version ─────────────────────────────────────────────────────────
+
+if ($env:LYBEL_DOCS_VERSION) {
+    $Version = $env:LYBEL_DOCS_VERSION
+} else {
+    # Follow the GitHub /releases/latest redirect to find the tag.
+    try {
+        $Resp = Invoke-WebRequest -Uri "$GithubBase/releases/latest" `
+            -MaximumRedirection 0 -ErrorAction SilentlyContinue
+        $Location = $Resp.Headers['Location']
+        $Version = $Location -replace '.*/tag/', ''
+    } catch {
+        $Location = $_.Exception.Response.Headers['Location']
+        if ($Location) {
+            $Version = $Location -replace '.*/tag/', ''
+        }
+    }
+    if (-not $Version) {
+        Write-Error "Could not determine latest version. Set `$env:LYBEL_DOCS_VERSION explicitly."
+        exit 1
+    }
+}
+
+Write-Host "Installing lybel-docs $Version for $Platform..."
+
+# ── prepare directories ───────────────────────────────────────────────────────
+
+New-Item -ItemType Directory -Force -Path $BinDir | Out-Null
+
+# ── download and extract binary ───────────────────────────────────────────────
+
+$Archive     = "lybel-docs-$Platform.zip"
+$DownloadUrl = "$GithubBase/releases/download/$Version/$Archive"
+$TmpDir      = Join-Path $env:TEMP "lybel-docs-install-$(Get-Random)"
+New-Item -ItemType Directory -Force -Path $TmpDir | Out-Null
+$TmpArchive  = Join-Path $TmpDir $Archive
+
+Write-Host "  Downloading $DownloadUrl"
+try {
+    Invoke-WebRequest -Uri $DownloadUrl -OutFile $TmpArchive -UseBasicParsing
+} catch {
+    Write-Error "Download failed: $DownloadUrl`n$($_.Exception.Message)"
+    exit 1
+}
+
+Write-Host "  Extracting..."
+try {
+    Expand-Archive -Path $TmpArchive -DestinationPath $TmpDir -Force
+} catch {
+    Write-Error "Extraction failed. Archive at: $TmpArchive`n$($_.Exception.Message)"
+    exit 1
+}
+
+# The binary inside the zip is lybel-docs-windows-amd64.exe (or similar).
+$ExtractedBin = Get-ChildItem -Path $TmpDir -Filter 'lybel-docs*.exe' | Select-Object -First 1
+if (-not $ExtractedBin) {
+    Write-Error "Binary not found in archive. Contents: $(Get-ChildItem $TmpDir | Select-Object -ExpandProperty Name)"
+    exit 1
+}
+
+$Destination = Join-Path $BinDir $BinName
+Copy-Item -Path $ExtractedBin.FullName -Destination $Destination -Force
+
+# ── download SKILL.md ─────────────────────────────────────────────────────────
+
+$SkillMdUrl = "$GithubRaw/cli/lybel-docs/SKILL.md"
+Write-Host "  Downloading SKILL.md"
+try {
+    Invoke-WebRequest -Uri $SkillMdUrl -OutFile (Join-Path $SkillDir 'SKILL.md') -UseBasicParsing
+} catch {
+    Write-Warning "Could not download SKILL.md from $SkillMdUrl (non-fatal)"
+}
+
+# ── verify installation ───────────────────────────────────────────────────────
+
+Write-Host ""
+Write-Host "Verifying installation..."
+try {
+    & $Destination --version
+} catch {
+    Write-Error "Binary verification failed. Binary at: $Destination"
+    exit 1
+}
+
+# ── check credentials ─────────────────────────────────────────────────────────
+
+Write-Host ""
+Write-Host "Checking credentials..."
+$CheckResult = & $Destination setup --check 2>&1
+$CheckCode   = $LASTEXITCODE
+
+if ($CheckCode -eq 0) {
+    Write-Host "  Already configured."
+} else {
+    Write-Host "  Not yet configured."
+    Write-Host "  Run ``$Destination setup`` to configure credentials,"
+    Write-Host "  or ask Claude to do it for you."
+}
+
+# ── cleanup ───────────────────────────────────────────────────────────────────
+
+Remove-Item -Recurse -Force $TmpDir -ErrorAction SilentlyContinue
+
+# ── add to PATH for this session (and suggest permanent addition) ─────────────
+
+$env:PATH = "$BinDir;$env:PATH"
+
+# ── summary ───────────────────────────────────────────────────────────────────
+
+Write-Host ""
+Write-Host "Done. lybel-docs $Version installed to:"
+Write-Host "  $Destination"
+Write-Host ""
+Write-Host "Skill directory: $SkillDir"
+Write-Host ""
+Write-Host "To make the binary permanently available, add to your PATH:"
+Write-Host "  [System.Environment]::SetEnvironmentVariable('PATH', `"$BinDir;`$env:PATH`", 'User')"

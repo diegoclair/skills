@@ -4,7 +4,9 @@
 #   make build       Build native binary into bin/lybel-docs
 #   make build-all   Cross-compile for darwin/linux/windows × amd64/arm64
 #   make test        Run unit tests
-#   make install     Build and copy into ../../skills/lybel-docs/bin/lybel-docs
+#   make install     Build and install to the Claude skill directory.
+#                    Default: $HOME/.claude/skills/lybel-docs/bin
+#                    Override with: make install INSTALL_DIR=/custom/path
 #   make clean       Remove bin/ and dist/
 #   make fmt         go fmt ./...
 #   make lint        go vet ./...
@@ -14,9 +16,11 @@ LDFLAGS := -s -w -X main.version=$(VERSION)
 PKG     := .
 BIN     := lybel-docs
 
-INSTALL_DIR := ../../skills/lybel-docs/bin
+# Where the Claude skill loader expects to find the binary.
+# Override at invocation time if your Claude config lives elsewhere.
+INSTALL_DIR ?= $(HOME)/.claude/skills/lybel-docs/bin
 
-.PHONY: all build build-all test install clean fmt lint deps
+.PHONY: all build build-all test install clean fmt lint deps release
 
 all: build
 
@@ -55,3 +59,55 @@ fmt:
 
 lint:
 	go vet ./...
+
+# release: build cross-platform binaries, package them into archives, and
+# generate a SHASUMS256.txt.  Requires VERSION to be set explicitly:
+#   make release VERSION=v0.3.0
+#
+# Outputs (all inside dist/):
+#   lybel-docs-darwin-amd64.tar.gz
+#   lybel-docs-darwin-arm64.tar.gz
+#   lybel-docs-linux-amd64.tar.gz
+#   lybel-docs-linux-arm64.tar.gz
+#   lybel-docs-windows-amd64.zip
+#   SHASUMS256.txt
+release: build-all
+ifndef VERSION
+	$(error VERSION is not set — run: make release VERSION=v0.3.0)
+endif
+	@echo "==> Packaging release $(VERSION)"
+	@# -- tarballs for Unix platforms --
+	@for platform in darwin-amd64 darwin-arm64 linux-amd64 linux-arm64; do \
+		binary="dist/$(BIN)-$$platform"; \
+		archive="dist/$(BIN)-$$platform.tar.gz"; \
+		extra=""; \
+		if [ -f README.md ];  then extra="$$extra README.md";  fi; \
+		if [ -f SETUP.md ];   then extra="$$extra SETUP.md";   fi; \
+		if [ -f LICENSE ];    then extra="$$extra LICENSE";    fi; \
+		echo "  -> $$archive"; \
+		tar -czf "$$archive" -C dist "$(BIN)-$$platform" \
+			$$(for f in $$extra; do echo "-C $(CURDIR) $$f"; done) 2>/dev/null || \
+		tar -czf "$$archive" "$$binary" $$extra; \
+	done
+	@# -- zip for Windows --
+	@binary="dist/$(BIN)-windows-amd64.exe"; \
+	archive="dist/$(BIN)-windows-amd64.zip"; \
+	extra=""; \
+	if [ -f README.md ]; then extra="$$extra README.md"; fi; \
+	if [ -f SETUP.md ];  then extra="$$extra SETUP.md";  fi; \
+	if [ -f LICENSE ];   then extra="$$extra LICENSE";   fi; \
+	echo "  -> $$archive"; \
+	zip -j "$$archive" "$$binary" $$extra
+	@# -- SHASUMS256.txt --
+	@echo "  -> dist/SHASUMS256.txt"
+	@cd dist && sha256sum \
+		$(BIN)-darwin-amd64.tar.gz \
+		$(BIN)-darwin-arm64.tar.gz \
+		$(BIN)-linux-amd64.tar.gz \
+		$(BIN)-linux-arm64.tar.gz \
+		$(BIN)-windows-amd64.zip \
+		> SHASUMS256.txt
+	@echo ""
+	@echo "Release $(VERSION) ready in dist/. To publish:"
+	@echo "  gh release create $(VERSION) dist/*.tar.gz dist/*.zip dist/SHASUMS256.txt \\"
+	@echo "    --title '$(VERSION)' --notes 'See CHANGELOG'"
