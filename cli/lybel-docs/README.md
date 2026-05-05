@@ -199,6 +199,7 @@ make install   # builds and copies to ../../skills/lybel-docs/bin/lybel-docs
 | Command | Description |
 |---|---|
 | `setup` | Interactive credential wizard; use `--check` to validate, `--print-config-path` to see where the file lives |
+| `update` | Self-update to the latest release. `--check` reports current vs latest without upgrading. Credentials and home cache are preserved |
 | `adf` | Convert Markdown (+ Confluence macro extensions) to ADF JSON |
 | `edit` | Apply a section-level or table-level operation to existing ADF without touching macros |
 | `page get` | Fetch a Confluence page via HTTP (bypasses MCP). Formats: `adf`, `text`/`markdown` (local render of ADF), `storage`, `view`/`html`, `export_view`. Slice with `--section "Heading" [--at-level N]` to get just one section. `--quiet` suppresses the "wrote N bytes" stderr line |

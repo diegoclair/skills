@@ -377,3 +377,24 @@ Exit codes for `setup --check`:
 - `3` — network error → retry once; if it persists, surface the error to the user and fall back to MCP
 
 If the binary is absent entirely, fall back to MCP for the current request and tell the user how to install: `cli/lybel-docs/README.md` has the one-shot install URL.
+
+## Updating the skill — "atualiza a skill" / "tem versão nova?"
+
+When the user asks to update, check, or upgrade the skill (any of: "atualiza a skill", "atualiza o lybel-docs", "tem versão nova?", "verifica se tem update", "tá na última versão?"), run:
+
+```
+lybel-docs update            # download + install latest release
+lybel-docs update --check    # only report whether an update is available
+```
+
+**Behavior:**
+- Resolves the latest release tag from GitHub.
+- Compares with the currently-installed binary.
+- If `--check`: reports `current → latest` and exits (0 = up to date, 10 = update available).
+- Without `--check`: shells out to the public installer (install.sh on Linux/macOS, install.ps1 on Windows). The installer overwrites the binary, SKILL.md, and reference files atomically. **Credentials and the home cache are preserved across the update** — no re-setup needed.
+
+**For non-technical users:** they don't need to remember any URL. Just running `lybel-docs update` does everything. Reply in pt-BR with the result, e.g.:
+- "Já está na última versão (v0.3.3)."
+- "Atualizei de v0.3.0 → v0.3.3."
+
+**When to suggest an update proactively:** if the user reports a CLI behavior that you know was changed in a more recent release (e.g. they say "esse comando não existe" for a flag you know exists), check `lybel-docs --version` and `lybel-docs update --check` before assuming a real bug.

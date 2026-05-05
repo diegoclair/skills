@@ -353,6 +353,45 @@ func TestPage_ChildrenIsAliasOfListChildren(t *testing.T) {
 	}
 }
 
+func TestUpdate_HelpFlag(t *testing.T) {
+	out, _, code := runCLI(t, "update", "--help")
+	if code != 0 {
+		t.Fatalf("want exit 0 for --help, got %d", code)
+	}
+	if !strings.Contains(out, "--check") {
+		t.Errorf("expected --check in help: %s", out)
+	}
+	if !strings.Contains(out, "lybel-docs update") {
+		t.Errorf("expected command name in help: %s", out)
+	}
+}
+
+func TestUpdate_UnknownFlag(t *testing.T) {
+	_, errOut, code := runCLI(t, "update", "--bogus")
+	if code == 0 {
+		t.Fatal("expected non-zero exit for unknown flag")
+	}
+	if !strings.Contains(errOut, "unknown flag") {
+		t.Errorf("expected 'unknown flag' in error: %s", errOut)
+	}
+}
+
+func TestNormalizeVersion(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{"v0.3.3", "0.3.3"},
+		{"0.3.3", "0.3.3"},
+		{" v1.0.0 ", "1.0.0"},
+		{"dev", "dev"},
+	}
+	for _, c := range cases {
+		if got := normalizeVersion(c.in); got != c.want {
+			t.Errorf("normalizeVersion(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
 func TestPage_UnknownVerbListsChildren(t *testing.T) {
 	// The "valid verbs" list should include `children` (canonical) — verifies
 	// help message is in sync with the dispatcher.
