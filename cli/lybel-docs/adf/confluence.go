@@ -22,8 +22,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -53,6 +55,38 @@ func legacyConfigPath() (string, error) {
 type ConfluenceCreds struct {
 	Email string
 	Token string
+}
+
+// HTTPError is returned by client methods when the API responds with a non-2xx
+// status. Callers can type-assert to inspect StatusCode (e.g. 409 conflict).
+type HTTPError struct {
+	StatusCode int
+	Message    string
+}
+
+func (e *HTTPError) Error() string {
+	if e.Message != "" {
+		return fmt.Sprintf("Confluence API error %d: %s", e.StatusCode, e.Message)
+	}
+	return fmt.Sprintf("Confluence API returned %d", e.StatusCode)
+}
+
+// IsConflict reports whether err (or any error it wraps) is a 409 from the
+// Confluence API — typically a stale version on update.
+func IsConflict(err error) bool {
+	for err != nil {
+		if h, ok := err.(*HTTPError); ok {
+			return h.StatusCode == 409
+		}
+		// Unwrap manually since we don't import errors here in tight loops
+		type unwrapper interface{ Unwrap() error }
+		if u, ok := err.(unwrapper); ok {
+			err = u.Unwrap()
+			continue
+		}
+		return false
+	}
+	return false
 }
 
 // ConfluenceClient is a minimal Confluence Cloud REST API v2 client.
@@ -255,14 +289,14 @@ func (c *ConfluenceClient) doRequest(method, path string, body io.Reader) ([]byt
 			} `json:"errors"`
 		}
 		if jerr := json.Unmarshal(respBody, &apiErr); jerr == nil && apiErr.Message != "" {
-			return nil, resp.StatusCode, fmt.Errorf("Confluence API error %d: %s", resp.StatusCode, apiErr.Message)
+			return nil, resp.StatusCode, &HTTPError{StatusCode: resp.StatusCode, Message: apiErr.Message}
 		}
 		// Truncate body for readability
 		body := string(respBody)
 		if len(body) > 300 {
 			body = body[:300] + "..."
 		}
-		return nil, resp.StatusCode, fmt.Errorf("Confluence API returned %d: %s", resp.StatusCode, body)
+		return nil, resp.StatusCode, &HTTPError{StatusCode: resp.StatusCode, Message: body}
 	}
 
 	return respBody, resp.StatusCode, nil
@@ -409,6 +443,108 @@ func (c *ConfluenceClient) PageURL(webuiPath string) string {
 		return webuiPath
 	}
 	return strings.TrimRight(c.baseURL, "/") + "/" + strings.TrimLeft(webuiPath, "/")
+}
+
+// SearchResult is one row from a CQL search.
+type SearchResult struct {
+	PageID  string
+	Title   string
+	URL     string
+	Excerpt string // plain-text excerpt, HTML highlight tags stripped
+}
+
+// SearchCQL runs a CQL query via the v1 Confluence search REST endpoint and
+// returns up to `limit` results (max 250). The v2 API has no search endpoint,
+// so we use /rest/api/search which has been stable for years.
+//
+// CQL is passed verbatim — caller is responsible for escaping. Typical shape:
+//
+//	space = "lybel" AND (title ~ "term" OR text ~ "term")
+func (c *ConfluenceClient) SearchCQL(cql string, limit int) ([]SearchResult, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+	if limit > 250 {
+		limit = 250
+	}
+	// URL-encode the CQL query
+	q := url.Values{}
+	q.Set("cql", cql)
+	q.Set("limit", strconv.Itoa(limit))
+	q.Set("expand", "content.history,content.version")
+	path := "/rest/api/search?" + q.Encode()
+
+	data, _, err := c.doRequest("GET", path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("search: %w", err)
+	}
+	var resp struct {
+		Results []struct {
+			Content struct {
+				ID    string `json:"id"`
+				Title string `json:"title"`
+				Type  string `json:"type"`
+				Links struct {
+					WebUI string `json:"webui"`
+				} `json:"_links"`
+			} `json:"content"`
+			Title    string `json:"title"`
+			Excerpt  string `json:"excerpt"`
+			URL      string `json:"url"`
+			EntityType string `json:"entityType"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, fmt.Errorf("parse search response: %w", err)
+	}
+
+	out := make([]SearchResult, 0, len(resp.Results))
+	for _, r := range resp.Results {
+		// Skip non-page results (attachments, comments, etc.)
+		if r.EntityType != "" && r.EntityType != "content" {
+			continue
+		}
+		if r.Content.Type != "" && r.Content.Type != "page" {
+			continue
+		}
+
+		pageID := r.Content.ID
+		title := r.Content.Title
+		if title == "" {
+			title = r.Title
+		}
+		webui := r.Content.Links.WebUI
+		if webui == "" {
+			webui = r.URL
+		}
+		out = append(out, SearchResult{
+			PageID:  pageID,
+			Title:   title,
+			URL:     c.PageURL(webui),
+			Excerpt: stripExcerptHTML(r.Excerpt),
+		})
+	}
+	return out, nil
+}
+
+// stripExcerptHTML removes Confluence's <b>highlight</b> tags and other
+// minimal HTML noise from search excerpts. Not a full HTML parser — just
+// enough to make the output readable as plain text.
+func stripExcerptHTML(s string) string {
+	if s == "" {
+		return ""
+	}
+	// Drop common tags
+	for _, tag := range []string{"<b>", "</b>", "<i>", "</i>", "<em>", "</em>", "<strong>", "</strong>", "<mark>", "</mark>"} {
+		s = strings.ReplaceAll(s, tag, "")
+	}
+	// Collapse newlines and multiple spaces
+	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.ReplaceAll(s, "\r", " ")
+	for strings.Contains(s, "  ") {
+		s = strings.ReplaceAll(s, "  ", " ")
+	}
+	return strings.TrimSpace(s)
 }
 
 // BaseURL returns the base URL of this client.

@@ -19,7 +19,7 @@ Hoje só temos uma skill, mas o repo foi desenhado para crescer: próximas candi
 
 | Skill | Resumo | Docs |
 |---|---|---|
-| **`lybel-docs`** | Assistente da base de conhecimento Confluence. Busca, cria e atualiza páginas no espaço Lybel em linguagem natural. | [SKILL.md](./skills/lybel-docs/SKILL.md) |
+| **`lybel-docs`** | Assistente da base de conhecimento Confluence. Busca, cria e atualiza páginas no espaço Lybel em linguagem natural. Usa um CLI Go local (`page digest`, `page apply`, `search`) que retorna sub-KB em vez do ADF inteiro — drasticamente mais barato em tokens que o MCP Atlassian puro. MCP fica como fallback. | [SKILL.md](./skills/lybel-docs/SKILL.md) |
 
 ---
 
@@ -27,12 +27,26 @@ Hoje só temos uma skill, mas o repo foi desenhado para crescer: próximas candi
 
 A `lybel-docs` é uma skill **timeless**: o repo não guarda dados específicos da Lybel (nomes de advisors, lista de investidores, page IDs de cada parceiro). Em vez disso:
 
-- **Ao usar a skill, o Claude sempre lê a Home do Confluence primeiro** (pageId `164232`). A Home é a fonte de verdade — mantém taxonomia atual, aliases, status e o índice de page IDs.
+- **Ao usar a skill, o Claude sempre consulta a Home do Confluence primeiro** (pageId `164232`). A Home é a fonte de verdade — mantém taxonomia atual, aliases, status e o índice de page IDs.
 - O repo só fornece **estrutura, workflows e templates** — instruções genéricas que não envelhecem.
 - **Nenhum dado específico vive no repo** — por isso é safe deixar público no GitHub.
-- Os arquivos em `reference/` são apenas **fallback** quando a Home está inacessível.
+- Os arquivos em `reference/` são apenas **fallback** quando o Confluence está inacessível.
 
 **Para customizar pra outra empresa**: troque `cloudId` e `pageId` da Home no frontmatter e no corpo de [`skills/lybel-docs/SKILL.md`](./skills/lybel-docs/SKILL.md). Crie a Home no seu próprio Confluence seguindo o mesmo padrão (taxonomia + aliases + index).
+
+## Por que CLI em vez de só MCP
+
+O servidor MCP da Atlassian é genérico e devolve o ADF inteiro de cada página (10–40 KB de JSON). Em uma sessão típica de research + edição de docs, isso facilmente queima a janela de contexto. O `lybel-docs` CLI vive no diretório da skill (`~/.claude/skills/lybel-docs/bin/`) e oferece comandos enxutos:
+
+- **`home --refresh`** — uma vez por sessão, baixa a Home do Confluence e guarda em `~/.cache/lybel-docs/home.json` (digest + texto renderizado + ADF parseado). Daí em diante, todo `home --query "termo"` / `--show` / `--digest` é 100% local — zero chamadas pra API.
+- **`page digest --page-id ID`** — devolve título, versão, outline de headings, macros e word count em ~500 bytes (vs 10–40 KB do `getConfluencePage`). Resolve a maioria das perguntas "o que tem nessa página?".
+- **`page apply --page-id ID --replace-section "X" --fragment file.md`** — GET → edit section-level → PUT atômico, com retry automático em 409 (alguém editou no meio). Suporta também `--table-add-row` / `--table-remove-row` pra atualizar tabelas dentro de seções. O ADF nunca passa pelo contexto do LLM. Macros fora da seção alterada são preservadas byte-a-byte.
+- **`search "termo"`** — busca CQL com saída TSV compacta (`pageId\ttitle\turl\texcerpt`).
+- **`page get --format export_view`** — quando precisa do conteúdo, devolve o HTML renderizado (~2× menor que ADF).
+
+**Invariante de segurança:** o cache é read-only. Toda escrita (`page apply`, `index add`, etc.) faz GET fresh do ADF antes do PUT — assim você nunca sobrescreve uma alteração feita em outra máquina.
+
+O Claude usa o CLI quando ele existe e cai no MCP automaticamente quando não. Resultado: sessão de docs típica fica 10–50× mais barata em tokens.
 
 ---
 
@@ -68,8 +82,12 @@ cd lybel-skills
 # 2. Symlink da skill para o diretório do Claude
 ln -s "$(pwd)/skills/lybel-docs" ~/.claude/skills/lybel-docs
 
-# 3. (Opcional) Build do CLI Go para ADF rico
-make install-cli
+# 3. (Recomendado) Build do CLI Go — habilita digest/apply/search e reduz custo de tokens
+cd cli/lybel-docs && make install
+# (Build padrão instala em ~/.claude/skills/lybel-docs/bin/lybel-docs)
+# Configurar credenciais Atlassian:
+lybel-docs setup
+cd -
 
 # 4. Reinicie o Claude Code
 #    A skill aparece automaticamente quando você faz uma pergunta relevante.

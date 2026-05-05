@@ -131,6 +131,27 @@ Conduct entirely in chat — no terminal commands needed from the user.
 
 **lybel-docs** is a command-line tool that:
 
+- Drives Claude's Confluence skill (`~/.claude/skills/lybel-docs/SKILL.md`) so
+  the assistant can hit Confluence directly without paying the token cost of
+  the Atlassian MCP. Most operations return sub-KB output instead of full ADF
+  bodies — typically 10–50× cheaper across a multi-edit session.
+- Maintains a **local cache of the Confluence Home** (`home` command) at
+  `~/.cache/lybel-docs/home.json`. One `home --refresh` per session pulls the
+  Home from Confluence; every subsequent `home --query`, `--show`, `--digest`
+  reads from disk — zero API calls. Writes always GET fresh ADF before PUT,
+  so the cache is never the source for an update (avoids overwriting work
+  done on another machine).
+- Produces a **slim digest** of any page (`page digest`) — title, version,
+  heading outline, macros — in ~500 bytes. Replaces 10–40 KB ADF reads for
+  the common "what's in this page?" question.
+- **Atomic page updates** (`page apply`): GET fresh ADF → apply section or
+  table op → PUT, with automatic refetch-and-retry on 409 (when someone else
+  updated mid-flight). The full ADF never leaves the binary — the caller
+  only sees a tiny status line. Supports `--append`, `--insert-after/before`,
+  `--replace-section`, `--delete-section`, `--table-add-row`,
+  `--table-remove-row`.
+- **CQL search** (`search`) returning compact TSV (id, title, url, excerpt)
+  instead of MCP's verbose JSON.
 - Converts extended Markdown to Atlassian Document Format (ADF) JSON, including
   Confluence macros (`[TOC]`, `:::expand`, `:::warning`, etc.).
 - Applies section-level edits to existing ADF pages **without touching macros**
@@ -140,8 +161,6 @@ Conduct entirely in chat — no terminal commands needed from the user.
   pages (>50 kB) where tool calls may time out.
 - Manages the Page ID Index table on the Lybel Home page.
 - Validates ADF structure and reports errors.
-- Drives Claude's Confluence skill (`~/.claude/skills/lybel-docs/SKILL.md`) with
-  a binary that Claude can call without an MCP server.
 
 ### Quick install
 
@@ -182,7 +201,14 @@ make install   # builds and copies to ../../skills/lybel-docs/bin/lybel-docs
 | `setup` | Interactive credential wizard; use `--check` to validate, `--print-config-path` to see where the file lives |
 | `adf` | Convert Markdown (+ Confluence macro extensions) to ADF JSON |
 | `edit` | Apply a section-level or table-level operation to existing ADF without touching macros |
-| `page` | Fetch, upload, or create Confluence pages via HTTP (bypasses MCP) |
+| `page get` | Fetch a Confluence page via HTTP (bypasses MCP). Formats: `adf`, `text`/`markdown` (local render of ADF), `storage`, `view`/`html`, `export_view`. Slice with `--section "Heading" [--at-level N]` to get just one section. `--quiet` suppresses the "wrote N bytes" stderr line |
+| `page digest` | Print a slim summary (~500 bytes) of a page: title, version, **status** (parsed from leading 🟢🟡🟠🔴🔵⚪✅ emoji in title), headings outline, macros. Designed to answer "what's in this page?" / "qual o status de X?" without a full ADF round-trip |
+| `page apply` | Atomic page update: GET ADF → apply op → PUT, with automatic 409-conflict retry. Operations: `--append`, `--insert-after`, `--insert-before`, `--replace-section`, `--delete-section`, `--table-add-row`, `--table-remove-row` |
+| `page upload` | Push a local ADF file to an existing page |
+| `page create` | Create a new page (markdown or ADF source) |
+| `page children` | List direct children of a page (TSV: id, title). Old name `list-children` still works as alias |
+| `search` | CQL search via the v1 API. TSV output (`pageId\ttitle\turl\texcerpt`). Defaults to `space="lybel" AND type="page"` |
+| `home` | Local Home-page cache. Verbs: `--refresh` (force GET + cache), `--status` (metadata), `--show` (text), `--query "X"` (grep), `--digest`. Cache at `~/.cache/lybel-docs/home.json`. Read-only — writes always GET fresh ADF first |
 | `lint` | Validate ADF structure and report errors/warnings |
 | `extract-body` | Unwrap the ADF body from an MCP `getConfluencePage` response |
 | `index` | Manage the Page ID Index table on the Lybel Home page |
@@ -219,10 +245,13 @@ adf/
   macros.go                 Pre-processing for [TOC] and ::: container blocks
   edit.go                   Section-level edit ops (append/insert/replace/delete)
   table_edit.go             Table-level ops + --at-level support
-  confluence.go             Confluence Cloud REST API v2 HTTP client + creds
+  confluence.go             REST API v2 HTTP client + creds + CQL search + 409 detection
+  digest.go                 Slim page-summary builder (heading outline, macros, words)
+  render.go                 ADF -> markdown-ish plain text (used by home cache)
+  cache.go                  HomeCache type + load/save (~/.cache/lybel-docs/home.json)
   lint.go                   ADF structure validator
   *_test.go                 Tests
-main.go                     CLI entry, flag parsing, IO plumbing
+main.go                     CLI entry, flag parsing, IO plumbing (incl. page digest/apply, search)
 main_test.go                CLI integration tests
 ```
 

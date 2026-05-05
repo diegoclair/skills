@@ -134,9 +134,31 @@ if ($CheckCode -eq 0) {
 
 Remove-Item -Recurse -Force $TmpDir -ErrorAction SilentlyContinue
 
-# ── add to PATH for this session (and suggest permanent addition) ─────────────
+# ── add to PATH (current session + persistent User PATH) ─────────────────────
+#
+# Without this, every Claude tool call has to use the absolute path to the
+# binary, which is friction the LLM has to deal with on every invocation.
+# We register the bin dir on the persistent User PATH so future shells (and
+# Claude's Bash tool) see it automatically.
 
 $env:PATH = "$BinDir;$env:PATH"
+
+$PathRegistered = $false
+try {
+    $UserPath = [System.Environment]::GetEnvironmentVariable('PATH', 'User')
+    if (-not $UserPath) { $UserPath = '' }
+    # Idempotent: only add if not already present (case-insensitive match).
+    $Already = $UserPath -split ';' | Where-Object { $_ -ieq $BinDir }
+    if (-not $Already) {
+        $NewPath = if ($UserPath) { "$BinDir;$UserPath" } else { "$BinDir" }
+        [System.Environment]::SetEnvironmentVariable('PATH', $NewPath, 'User')
+        $PathRegistered = $true
+    } else {
+        $PathRegistered = $true  # already registered = success
+    }
+} catch {
+    Write-Warning "Could not register $BinDir on User PATH: $($_.Exception.Message)"
+}
 
 # ── summary ───────────────────────────────────────────────────────────────────
 
@@ -145,6 +167,13 @@ Write-Host "Done. lybel-docs $Version installed to:"
 Write-Host "  $Destination"
 Write-Host ""
 Write-Host "Skill directory: $SkillDir"
-Write-Host ""
-Write-Host "To make the binary permanently available, add to your PATH:"
-Write-Host "  [System.Environment]::SetEnvironmentVariable('PATH', `"$BinDir;`$env:PATH`", 'User')"
+
+if ($PathRegistered) {
+    Write-Host ""
+    Write-Host "Ready to use: ``lybel-docs --version`` from any new shell."
+    Write-Host "(Current shell already has it on PATH.)"
+} else {
+    Write-Host ""
+    Write-Host "Could not register PATH automatically. Add manually:"
+    Write-Host "  [System.Environment]::SetEnvironmentVariable('PATH', `"$BinDir;`$env:PATH`", 'User')"
+}

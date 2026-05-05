@@ -25,6 +25,65 @@ func sampleDoc() Node {
 	)
 }
 
+func TestSectionContent(t *testing.T) {
+	doc := sampleDoc()
+	sub, err := SectionContent(doc, "Bravo", 0)
+	if err != nil {
+		t.Fatalf("SectionContent: %v", err)
+	}
+	if sub.Type != "doc" {
+		t.Errorf("expected doc node, got %q", sub.Type)
+	}
+	// Sub should contain heading "Bravo" + its body, nothing else.
+	if len(sub.Content) != 2 {
+		t.Fatalf("expected 2 nodes, got %d", len(sub.Content))
+	}
+	if sub.Content[0].Type != "heading" {
+		t.Errorf("[0] expected heading, got %q", sub.Content[0].Type)
+	}
+	out, _ := json.Marshal(sub)
+	if !strings.Contains(string(out), "Bravo") {
+		t.Errorf("expected Bravo in output: %s", out)
+	}
+	if strings.Contains(string(out), "body A") || strings.Contains(string(out), "body C") {
+		t.Errorf("output leaked sibling sections: %s", out)
+	}
+}
+
+func TestSectionContent_NotFound(t *testing.T) {
+	doc := sampleDoc()
+	_, err := SectionContent(doc, "Nonexistent", 0)
+	if err == nil {
+		t.Fatal("expected error for missing section")
+	}
+	if !strings.Contains(err.Error(), "Nonexistent") {
+		t.Errorf("error should mention the missing heading: %v", err)
+	}
+}
+
+func TestSectionContent_NestedSubsections(t *testing.T) {
+	// h2 + h3 should include the h3 in the section body
+	doc := Doc(
+		Heading(2, Text("Parent")),
+		Paragraph(Text("parent body")),
+		Heading(3, Text("Child")),
+		Paragraph(Text("child body")),
+		Heading(2, Text("Sibling")),
+		Paragraph(Text("sibling body")),
+	)
+	sub, err := SectionContent(doc, "Parent", 2)
+	if err != nil {
+		t.Fatalf("SectionContent: %v", err)
+	}
+	out, _ := json.Marshal(sub)
+	if !strings.Contains(string(out), "child body") {
+		t.Errorf("expected nested h3 to be included: %s", out)
+	}
+	if strings.Contains(string(out), "sibling body") {
+		t.Errorf("sibling h2 should NOT be included: %s", out)
+	}
+}
+
 func TestAppend(t *testing.T) {
 	doc := sampleDoc()
 	frag := []Node{Heading(2, Text("Delta")), Paragraph(Text("body D"))}

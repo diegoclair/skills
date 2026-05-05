@@ -12,6 +12,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/lybel-app/skills/cli/lybel-docs/adf"
 	"github.com/lybel-app/skills/cli/lybel-docs/setup"
@@ -27,6 +28,8 @@ USAGE:
   lybel-docs adf          [--file PATH] [--pretty]
   lybel-docs edit         [--input PATH] OPERATION [--at-level N] [--pretty]
   lybel-docs page         VERB [flags]
+  lybel-docs search       "term" [--limit N] [--space lybel] [--cql RAW] [--json]
+  lybel-docs home         [--refresh | --status | --show | --query "X" | --digest] [--max-age 24h]
   lybel-docs lint         FILE.json
   lybel-docs extract-body [< mcp-response.json]
   lybel-docs index        VERB [flags]
@@ -37,7 +40,9 @@ COMMANDS:
   setup         Interactive wizard to configure Atlassian API credentials.
   adf           Convert markdown (stdin or --file) to an ADF JSON document.
   edit          Apply a section-level or table edit to an existing ADF doc.
-  page          Fetch, upload, or create Confluence pages via HTTP (bypasses MCP).
+  page          Fetch, upload, create, digest, or apply edits to Confluence pages.
+  search        CQL search via the v1 API. TSV output (id\ttitle\turl\texcerpt).
+  home          Local cache of the Confluence Home page (refresh, status, show, query).
   lint          Validate ADF structure and report errors/warnings.
   extract-body  Unwrap body from an MCP getConfluencePage response.
   index         Manage the Page ID Index table on the Home page.
@@ -67,14 +72,44 @@ EDIT FLAGS:
       --pretty       Pretty-print the JSON output.
 
 PAGE VERBS:
-  page get     --page-id ID [--cloud SUBDOMAIN] [--output FILE]
-               [--format adf|storage|view|export_view]
-               (markdown is an alias of export_view; html is an alias of view)
+  page get     --page-id ID [--cloud SUBDOMAIN] [--output FILE] [--quiet]
+               [--format adf|text|markdown|export_view|html|view|storage]
+               [--section "Heading" [--at-level N]]
+               Default --format is "adf", or "text" when --section is set.
+               "text"/"markdown" render ADF locally (reuses adf.RenderText).
+               "html" is an alias of "view".
+               --section slices the response to a single heading + its body
+               (heading + nodes until the next heading of equal-or-higher level).
+               Only --format adf|text|markdown work with --section.
   page upload  --page-id ID --adf FILE [--title TITLE] [--message MSG] [--dry-run]
                [--cloud SUBDOMAIN] [--email EMAIL] [--token TOKEN]
   page create  --space-id ID --parent-id ID --title TITLE
                [--markdown FILE | --adf FILE] [--cloud SUBDOMAIN]
                [--email EMAIL] [--token TOKEN]
+  page digest  --page-id ID [--json]
+               Print a slim summary of the page (title, version, headings,
+               word counts, macros). Replaces a 10-40 KB ADF read with a
+               <1 KB digest — answers most "what's in this page?" questions
+               without round-tripping the full doc.
+  page apply   --page-id ID OPERATION [--fragment FILE] [--at-level N]
+               [--message MSG] [--dry-run]
+               Atomic update: GET ADF → apply op → PUT. On 409 conflict
+               (someone else updated mid-flight), refetches and retries once.
+               The full ADF never leaves the binary.
+               OPERATION is one of:
+                 --append                                          (needs --fragment)
+                 --insert-after  "Heading"                         (needs --fragment)
+                 --insert-before "Heading"                         (needs --fragment)
+                 --replace-section "Heading"                       (needs --fragment)
+                 --delete-section  "Heading"
+                 --table-add-row    "Heading" --row "a|b|c"        [--after-row "x"] [--if-missing]
+                 --table-remove-row "Heading" --match-cell "text"
+               In --row, '|' is the cell separator. To include a literal pipe
+               character inside a cell, escape it with a backslash, e.g.:
+               --row "Foo (A\|B)|123"  → cells: ["Foo (A|B)", "123"].
+  page children  --page-id ID [--cloud SUBDOMAIN]
+               List direct children of a page. Output: TSV (id, title) per line.
+               (Old name 'list-children' still works as alias.)
 
 LINT:
   lybel-docs lint page.json
@@ -104,9 +139,36 @@ MARKDOWN EXTENSIONS (adf & edit fragments):
   :::expand Title                    Expand block; close with :::
   :::warning Title                   Panel of type warning/info/note/success/error.
 
+SEARCH:
+  search "term" [--limit N] [--space KEY] [--json]
+    Default CQL: space="<KEY>" AND type="page" AND (title ~ "term" OR text ~ "term")
+    Default space: lybel. Default limit: 10. Output: TSV (id, title, url, excerpt).
+  search --cql 'space=lybel AND label="adr"'
+    Pass raw CQL — caller is responsible for escaping.
+
+HOME CACHE:
+  home --refresh                 Force GET + cache (~/.cache/lybel-docs/home.json).
+  home --status                  Print cache metadata (default if no flag).
+  home --show                    Print cached page text (markdown rendering of ADF).
+  home --query "term"            Grep cached content; auto-refresh if cache missing.
+  home --digest                  Print cached digest.
+  home --max-age DURATION        Stale threshold for warning (default 24h).
+  WRITES: the cache is read-only for navigation. 'page apply' always GETs
+  fresh ADF before PUT — the cache is NEVER used as the source for updates.
+
 EXAMPLES:
   # Convert markdown to ADF
   lybel-docs adf < page.md > page.adf.json
+
+  # Slim summary of a page (cheap; LLM-friendly)
+  lybel-docs page digest --page-id 164232
+
+  # Atomic update without ever loading the full ADF into the caller
+  lybel-docs page apply --page-id 164232 \
+    --replace-section "Roadmap" --fragment new.md --message "rewrite roadmap"
+
+  # Search the lybel space
+  lybel-docs search "advisor" --limit 5
 
   # Append a new section (preserves all macros)
   lybel-docs edit --input page.json --append new-section.md > updated.json
@@ -185,6 +247,10 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) (int, error) 
 		return runEdit(args[1:], stdin, stdout, stderr)
 	case "page":
 		return runPage(args[1:], stdin, stdout, stderr)
+	case "search":
+		return runSearch(args[1:], stdout, stderr)
+	case "home":
+		return runHome(args[1:], stdout, stderr)
 	case "lint":
 		return runLint(args[1:], stdin, stdout, stderr)
 	case "extract-body":
@@ -527,11 +593,18 @@ func runPage(args []string, stdin io.Reader, stdout, stderr io.Writer) (int, err
 		return runPageUpload(args[1:], stdout, stderr)
 	case "create":
 		return runPageCreate(args[1:], stdout, stderr)
-	case "list-children":
+	case "children", "list-children":
+		// `children` is the canonical (single-word) verb, parallel to
+		// `get`/`digest`/`apply`. `list-children` kept as a back-compat alias
+		// from the original kebab-case name.
 		return runPageListChildren(args[1:], stdout, stderr)
+	case "digest":
+		return runPageDigest(args[1:], stdout, stderr)
+	case "apply":
+		return runPageApply(args[1:], stdout, stderr)
 	default:
 		fmt.Fprintln(stderr, "page: unknown verb:", args[0])
-		fmt.Fprintln(stderr, "  valid verbs: get, upload, create, list-children")
+		fmt.Fprintln(stderr, "  valid verbs: get, upload, create, children, digest, apply")
 		return exitInputErr, errInvalidUsage
 	}
 }
@@ -579,7 +652,12 @@ func buildClient(cloud, email, token string, stderr io.Writer) (*adf.ConfluenceC
 }
 
 func runPageGet(args []string, stdout, stderr io.Writer) (int, error) {
-	var pageID, format, outputFile string
+	var (
+		pageID, format, outputFile string
+		section                    string
+		atLevel                    int
+		quiet                      bool
+	)
 
 	remaining, cloud, email, token, err := parseCommonPageFlags(args)
 	if err != nil {
@@ -599,7 +677,7 @@ func runPageGet(args []string, stdout, stderr io.Writer) (int, error) {
 			i++
 		case "--format":
 			if i+1 >= len(remaining) {
-				fmt.Fprintln(stderr, "--format requires a value (adf|markdown|html)")
+				fmt.Fprintln(stderr, "--format requires a value (adf|text|markdown|export_view|html|view|storage)")
 				return exitInputErr, errInvalidUsage
 			}
 			format = remaining[i+1]
@@ -611,6 +689,27 @@ func runPageGet(args []string, stdout, stderr io.Writer) (int, error) {
 			}
 			outputFile = remaining[i+1]
 			i++
+		case "--section":
+			if i+1 >= len(remaining) {
+				fmt.Fprintln(stderr, "--section requires a heading")
+				return exitInputErr, errInvalidUsage
+			}
+			section = remaining[i+1]
+			i++
+		case "--at-level":
+			if i+1 >= len(remaining) {
+				fmt.Fprintln(stderr, "--at-level requires a value (1-6)")
+				return exitInputErr, errInvalidUsage
+			}
+			n, lvErr := strconv.Atoi(remaining[i+1])
+			if lvErr != nil || n < 1 || n > 6 {
+				fmt.Fprintln(stderr, "--at-level must be an integer between 1 and 6")
+				return exitInputErr, errInvalidUsage
+			}
+			atLevel = n
+			i++
+		case "--quiet":
+			quiet = true
 		default:
 			fmt.Fprintln(stderr, "unknown flag:", a)
 			return exitInputErr, errInvalidUsage
@@ -622,7 +721,32 @@ func runPageGet(args []string, stdout, stderr io.Writer) (int, error) {
 		return exitInputErr, errInvalidUsage
 	}
 	if format == "" {
-		format = "adf"
+		// Default: when slicing a section, the caller almost always wants
+		// readable prose (text). Otherwise, keep the historical ADF default.
+		if section != "" {
+			format = "text"
+		} else {
+			format = "adf"
+		}
+	}
+
+	// "text" and "markdown" are local renderings of ADF — they require
+	// fetching atlas_doc_format and running adf.RenderText. They are NOT
+	// API-side body formats.
+	wantLocalRender := format == "text" || format == "markdown"
+
+	// --section requires local-side slicing on the parsed ADF. The only
+	// formats supported with --section are adf, text, and markdown — the
+	// server-rendered formats (view/html/storage/export_view) describe the
+	// whole page and can't be sliced reliably by heading.
+	if section != "" {
+		switch format {
+		case "adf", "text", "markdown":
+			// ok
+		default:
+			fmt.Fprintf(stderr, "--section is only supported with --format adf|text|markdown (got %q)\n", format)
+			return exitInputErr, errInvalidUsage
+		}
 	}
 
 	client, ok := buildClient(cloud, email, token, stderr)
@@ -631,21 +755,20 @@ func runPageGet(args []string, stdout, stderr io.Writer) (int, error) {
 	}
 
 	// Map user-facing format to (Confluence API body-format, body field to read).
-	// Confluence Cloud has no native markdown — "markdown" is an alias for
-	// export_view (rendered HTML). For real markdown, fetch ADF and convert
-	// downstream.
 	var bodyFormat, fieldName string
 	switch format {
-	case "adf":
+	case "adf", "text", "markdown":
+		// All three need ADF from the API; "text"/"markdown" are rendered
+		// locally after fetch.
 		bodyFormat, fieldName = "atlas_doc_format", "atlas_doc_format"
 	case "storage":
 		bodyFormat, fieldName = "storage", "storage"
 	case "view", "html":
 		bodyFormat, fieldName = "view", "view"
-	case "export_view", "markdown":
+	case "export_view":
 		bodyFormat, fieldName = "export_view", "export_view"
 	default:
-		fmt.Fprintf(stderr, "unknown format %q — use adf, storage, view, export_view (markdown alias), or html\n", format)
+		fmt.Fprintf(stderr, "unknown format %q — use adf, text, markdown, storage, view, html, or export_view\n", format)
 		return exitInputErr, errInvalidUsage
 	}
 
@@ -655,20 +778,64 @@ func runPageGet(args []string, stdout, stderr io.Writer) (int, error) {
 		return exitUnknownErr, err
 	}
 
-	var out []byte
+	var raw []byte
 	switch fieldName {
 	case "atlas_doc_format":
-		out = []byte(meta.Body.AtlasDocFormat.Value)
+		raw = []byte(meta.Body.AtlasDocFormat.Value)
 	case "storage":
-		out = []byte(meta.Body.Storage.Value)
+		raw = []byte(meta.Body.Storage.Value)
 	case "view":
-		out = []byte(meta.Body.View.Value)
+		raw = []byte(meta.Body.View.Value)
 	case "export_view":
-		out = []byte(meta.Body.ExportView.Value)
+		raw = []byte(meta.Body.ExportView.Value)
 	}
-	if len(out) == 0 {
+	if len(raw) == 0 {
 		fmt.Fprintf(stderr, "page has no %s body — try a different --format\n", fieldName)
 		return exitUnknownErr, fmt.Errorf("empty %s body", fieldName)
+	}
+
+	// Compute the final output bytes based on (--section, --format).
+	var out []byte
+	if section != "" || wantLocalRender {
+		// Both branches need the parsed ADF doc.
+		doc, dErr := adf.UnmarshalDoc(raw)
+		if dErr != nil {
+			fmt.Fprintln(stderr, "parse ADF:", dErr)
+			return exitParseErr, dErr
+		}
+
+		// Slice to a section if requested.
+		target := doc
+		if section != "" {
+			sub, sErr := adf.SectionContent(doc, section, atLevel)
+			if sErr != nil {
+				fmt.Fprintln(stderr, "operation failed:", sErr)
+				fmt.Fprintln(stderr, "current top-level sections:")
+				for _, n := range doc.Content {
+					if n.Type == "heading" {
+						fmt.Fprintf(stderr, "  - h%d %q\n", headingLevelFromNode(n), strings.TrimSpace(allText(n)))
+					}
+				}
+				return exitInputErr, errInvalidUsage
+			}
+			target = sub
+		}
+
+		// Render into the requested format.
+		switch format {
+		case "adf":
+			marshalled, mErr := adf.Marshal(target, false)
+			if mErr != nil {
+				fmt.Fprintln(stderr, "marshal:", mErr)
+				return exitUnknownErr, mErr
+			}
+			out = marshalled
+		case "text", "markdown":
+			out = []byte(adf.RenderText(target))
+		}
+	} else {
+		// No slicing, no local rendering — emit the API body as-is.
+		out = raw
 	}
 
 	if outputFile != "" {
@@ -676,7 +843,9 @@ func runPageGet(args []string, stdout, stderr io.Writer) (int, error) {
 			fmt.Fprintln(stderr, "writing output:", err)
 			return exitUnknownErr, err
 		}
-		fmt.Fprintf(stderr, "wrote %d bytes to %s\n", len(out), outputFile)
+		if !quiet {
+			fmt.Fprintf(stderr, "wrote %d bytes to %s\n", len(out), outputFile)
+		}
 	} else {
 		if _, err := stdout.Write(out); err != nil {
 			return exitUnknownErr, err
@@ -766,6 +935,8 @@ func runPageUpload(args []string, stdout, stderr io.Writer) (int, error) {
 	}
 
 	if !dryRun {
+		// Auto-refresh the home cache if this write touched the Home page.
+		refreshHomeCacheAfterWrite(pageID, client, stderr)
 		fmt.Fprintf(stdout, `{"status":"ok","pageId":%q}`+"\n", pageID)
 	}
 	return exitOK, nil
@@ -915,7 +1086,7 @@ func runPageListChildren(args []string, stdout, stderr io.Writer) (int, error) {
 	}
 
 	if pageID == "" {
-		fmt.Fprintln(stderr, "page list-children: --page-id is required")
+		fmt.Fprintln(stderr, "page children: --page-id is required")
 		return exitInputErr, errInvalidUsage
 	}
 
@@ -934,6 +1105,857 @@ func runPageListChildren(args []string, stdout, stderr io.Writer) (int, error) {
 		fmt.Fprintf(stdout, "%s\t%s\n", c.ID, c.Title)
 	}
 	return exitOK, nil
+}
+
+// runPageDigest fetches a page, parses its ADF, and emits a slim summary
+// (title, version, headings + word counts, macros). Designed to answer
+// "what's in this page?" without round-tripping the full ADF.
+func runPageDigest(args []string, stdout, stderr io.Writer) (int, error) {
+	var pageID string
+	var asJSON bool
+
+	remaining, cloud, email, token, err := parseCommonPageFlags(args)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return exitInputErr, errInvalidUsage
+	}
+
+	for i := 0; i < len(remaining); i++ {
+		a := remaining[i]
+		switch a {
+		case "--page-id":
+			if i+1 >= len(remaining) {
+				fmt.Fprintln(stderr, "--page-id requires a value")
+				return exitInputErr, errInvalidUsage
+			}
+			pageID = remaining[i+1]
+			i++
+		case "--json":
+			asJSON = true
+		default:
+			fmt.Fprintln(stderr, "unknown flag:", a)
+			return exitInputErr, errInvalidUsage
+		}
+	}
+
+	if pageID == "" {
+		fmt.Fprintln(stderr, "page digest: --page-id is required")
+		return exitInputErr, errInvalidUsage
+	}
+
+	client, ok := buildClient(cloud, email, token, stderr)
+	if !ok {
+		return exitUnknownErr, nil
+	}
+
+	meta, err := client.GetPage(pageID, "atlas_doc_format")
+	if err != nil {
+		fmt.Fprintln(stderr, "error:", err)
+		return exitUnknownErr, err
+	}
+	if meta.Body.AtlasDocFormat.Value == "" {
+		fmt.Fprintln(stderr, "page has no ADF body")
+		return exitUnknownErr, fmt.Errorf("empty ADF body")
+	}
+
+	doc, err := adf.UnmarshalDoc([]byte(meta.Body.AtlasDocFormat.Value))
+	if err != nil {
+		fmt.Fprintln(stderr, "parse ADF:", err)
+		return exitParseErr, err
+	}
+
+	digest := adf.BuildDigest(doc, meta.ID, meta.Title, client.PageURL(meta.Links.WebUI), meta.Version.Number)
+
+	if asJSON {
+		out, _ := json.MarshalIndent(digest, "", "  ")
+		fmt.Fprintln(stdout, string(out))
+	} else {
+		fmt.Fprint(stdout, digest.FormatText())
+	}
+	return exitOK, nil
+}
+
+// runPageApply atomically applies a section-level edit to a Confluence page:
+// GET (fresh ADF) → edit (in memory) → PUT. On 409 conflict (someone else
+// updated the page in the meantime), it refetches and retries once. The full
+// ADF never leaves the binary — the caller only sees a tiny status line.
+//
+// Supports the same operations as `edit` (--append, --insert-after,
+// --insert-before, --replace-section, --delete-section), but takes a page ID
+// instead of an ADF file.
+func runPageApply(args []string, stdout, stderr io.Writer) (int, error) {
+	var (
+		pageID       string
+		op           editOp
+		heading      string
+		fragmentPath string
+		atLevel      int
+		message      string
+		dryRun       bool
+		rowText      string
+		afterRow     string
+		matchCell    string
+		ifMissing    bool
+	)
+
+	setOp := func(newOp editOp) error {
+		if op != opNone {
+			return fmt.Errorf("multiple operations specified; use only one")
+		}
+		op = newOp
+		return nil
+	}
+
+	remaining, cloud, email, token, err := parseCommonPageFlags(args)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return exitInputErr, errInvalidUsage
+	}
+
+	for i := 0; i < len(remaining); i++ {
+		a := remaining[i]
+		switch a {
+		case "--page-id":
+			if i+1 >= len(remaining) {
+				fmt.Fprintln(stderr, "--page-id requires a value")
+				return exitInputErr, errInvalidUsage
+			}
+			pageID = remaining[i+1]
+			i++
+		case "--message":
+			if i+1 >= len(remaining) {
+				fmt.Fprintln(stderr, "--message requires a value")
+				return exitInputErr, errInvalidUsage
+			}
+			message = remaining[i+1]
+			i++
+		case "--at-level":
+			if i+1 >= len(remaining) {
+				fmt.Fprintln(stderr, "--at-level requires a value (1-6)")
+				return exitInputErr, errInvalidUsage
+			}
+			n, atErr := strconv.Atoi(remaining[i+1])
+			if atErr != nil || n < 1 || n > 6 {
+				fmt.Fprintln(stderr, "--at-level must be an integer between 1 and 6")
+				return exitInputErr, errInvalidUsage
+			}
+			atLevel = n
+			i++
+		case "--fragment":
+			if i+1 >= len(remaining) {
+				fmt.Fprintln(stderr, "--fragment requires a file path")
+				return exitInputErr, errInvalidUsage
+			}
+			fragmentPath = remaining[i+1]
+			i++
+		case "--dry-run":
+			dryRun = true
+		case "--row":
+			if i+1 >= len(remaining) {
+				fmt.Fprintln(stderr, "--row requires a value")
+				return exitInputErr, errInvalidUsage
+			}
+			rowText = remaining[i+1]
+			i++
+		case "--after-row":
+			if i+1 >= len(remaining) {
+				fmt.Fprintln(stderr, "--after-row requires a value")
+				return exitInputErr, errInvalidUsage
+			}
+			afterRow = remaining[i+1]
+			i++
+		case "--match-cell":
+			if i+1 >= len(remaining) {
+				fmt.Fprintln(stderr, "--match-cell requires a value")
+				return exitInputErr, errInvalidUsage
+			}
+			matchCell = remaining[i+1]
+			i++
+		case "--if-missing":
+			ifMissing = true
+		case "--append":
+			if err := setOp(opAppend); err != nil {
+				fmt.Fprintln(stderr, err)
+				return exitInputErr, errInvalidUsage
+			}
+		case "--insert-after", "--insert-before", "--replace-section":
+			var newOp editOp
+			switch a {
+			case "--insert-after":
+				newOp = opInsertAfter
+			case "--insert-before":
+				newOp = opInsertBefore
+			case "--replace-section":
+				newOp = opReplaceSection
+			}
+			if err := setOp(newOp); err != nil {
+				fmt.Fprintln(stderr, err)
+				return exitInputErr, errInvalidUsage
+			}
+			if i+1 >= len(remaining) {
+				fmt.Fprintln(stderr, a, `requires "Heading"`)
+				return exitInputErr, errInvalidUsage
+			}
+			heading = remaining[i+1]
+			i++
+		case "--delete-section":
+			if err := setOp(opDeleteSection); err != nil {
+				fmt.Fprintln(stderr, err)
+				return exitInputErr, errInvalidUsage
+			}
+			if i+1 >= len(remaining) {
+				fmt.Fprintln(stderr, a, `requires "Heading"`)
+				return exitInputErr, errInvalidUsage
+			}
+			heading = remaining[i+1]
+			i++
+		case "--table-add-row":
+			if err := setOp(opTableAddRow); err != nil {
+				fmt.Fprintln(stderr, err)
+				return exitInputErr, errInvalidUsage
+			}
+			if i+1 >= len(remaining) {
+				fmt.Fprintln(stderr, a, `requires "Heading"`)
+				return exitInputErr, errInvalidUsage
+			}
+			heading = remaining[i+1]
+			i++
+		case "--table-remove-row":
+			if err := setOp(opTableRemoveRow); err != nil {
+				fmt.Fprintln(stderr, err)
+				return exitInputErr, errInvalidUsage
+			}
+			if i+1 >= len(remaining) {
+				fmt.Fprintln(stderr, a, `requires "Heading"`)
+				return exitInputErr, errInvalidUsage
+			}
+			heading = remaining[i+1]
+			i++
+		default:
+			fmt.Fprintln(stderr, "unknown flag:", a)
+			return exitInputErr, errInvalidUsage
+		}
+	}
+
+	if pageID == "" {
+		fmt.Fprintln(stderr, "page apply: --page-id is required")
+		return exitInputErr, errInvalidUsage
+	}
+	if op == opNone {
+		fmt.Fprintln(stderr, "page apply: no operation specified")
+		fmt.Fprintln(stderr, "  use one of: --append, --insert-after, --insert-before, --replace-section, --delete-section, --table-add-row, --table-remove-row")
+		return exitInputErr, errInvalidUsage
+	}
+	// Operation-specific validation:
+	switch op {
+	case opAppend, opInsertAfter, opInsertBefore, opReplaceSection:
+		if fragmentPath == "" {
+			fmt.Fprintln(stderr, "page apply: --fragment FILE is required for this operation")
+			return exitInputErr, errInvalidUsage
+		}
+	case opTableAddRow:
+		if rowText == "" {
+			fmt.Fprintln(stderr, "page apply: --table-add-row requires --row \"col1|col2|...\"")
+			return exitInputErr, errInvalidUsage
+		}
+	case opTableRemoveRow:
+		if matchCell == "" {
+			fmt.Fprintln(stderr, "page apply: --table-remove-row requires --match-cell \"text\"")
+			return exitInputErr, errInvalidUsage
+		}
+	}
+
+	client, ok := buildClient(cloud, email, token, stderr)
+	if !ok {
+		return exitUnknownErr, nil
+	}
+
+	// Load the fragment once (its content doesn't change between retries).
+	var fragment []adf.Node
+	if fragmentPath != "" {
+		src, frErr := os.ReadFile(fragmentPath)
+		if frErr != nil {
+			fmt.Fprintln(stderr, "reading fragment:", frErr)
+			return exitInputErr, frErr
+		}
+		nodes, frErr := adf.ConvertFragment(src)
+		if frErr != nil {
+			fmt.Fprintln(stderr, "parse fragment:", frErr)
+			return exitParseErr, frErr
+		}
+		fragment = nodes
+	}
+
+	// Attempt up to 2 times: first try, then one retry on 409.
+	var lastFromVersion, lastToVersion int
+	var lastTitle string
+	for attempt := 0; attempt < 2; attempt++ {
+		// 1. Always fetch fresh ADF before each PUT — never mutate stale state.
+		meta, gErr := client.GetPage(pageID, "atlas_doc_format")
+		if gErr != nil {
+			fmt.Fprintln(stderr, "fetching page:", gErr)
+			return exitUnknownErr, gErr
+		}
+		if meta.Body.AtlasDocFormat.Value == "" {
+			fmt.Fprintln(stderr, "page has no ADF body — aborting")
+			return exitUnknownErr, fmt.Errorf("empty ADF body")
+		}
+		doc, dErr := adf.UnmarshalDoc([]byte(meta.Body.AtlasDocFormat.Value))
+		if dErr != nil {
+			fmt.Fprintln(stderr, "parse ADF:", dErr)
+			return exitParseErr, dErr
+		}
+
+		// 2. Apply the operation against fresh ADF.
+		var result adf.Node
+		var opErr error
+		var rowExisted bool
+		switch op {
+		case opAppend:
+			result = adf.Append(doc, fragment)
+		case opInsertAfter:
+			result, opErr = adf.InsertAfterAtLevel(doc, heading, atLevel, fragment)
+		case opInsertBefore:
+			result, opErr = adf.InsertBeforeAtLevel(doc, heading, atLevel, fragment)
+		case opReplaceSection:
+			result, opErr = adf.ReplaceSectionAtLevel(doc, heading, atLevel, fragment)
+		case opDeleteSection:
+			result, opErr = adf.DeleteSectionAtLevel(doc, heading, atLevel)
+		case opTableAddRow:
+			result, rowExisted, opErr = adf.TableAddRow(doc, heading, atLevel, rowText, afterRow, ifMissing)
+			if rowExisted {
+				fmt.Fprintf(stderr, "notice: row with first cell %q already exists in %q — skipped (--if-missing)\n",
+					strings.SplitN(rowText, "|", 2)[0], heading)
+				fmt.Fprintf(stdout, `{"status":"skipped","reason":"row already exists","pageId":%q}`+"\n", pageID)
+				return exitOK, nil
+			}
+		case opTableRemoveRow:
+			result, opErr = adf.TableRemoveRow(doc, heading, atLevel, matchCell)
+		}
+		if opErr != nil {
+			// For section ops, list the current top-level headings to help
+			// the caller. Table ops embed their own heading list in the
+			// error message — printing it once is enough.
+			fmt.Fprintln(stderr, "operation failed:", opErr)
+			if op != opTableAddRow && op != opTableRemoveRow {
+				fmt.Fprintln(stderr, "current top-level sections:")
+				for _, n := range doc.Content {
+					if n.Type == "heading" {
+						fmt.Fprintf(stderr, "  - h%d %q\n", headingLevelFromNode(n), strings.TrimSpace(allText(n)))
+					}
+				}
+			}
+			// Return errInvalidUsage so main() prints a terse "lybel-docs:
+			// invalid usage" instead of re-printing the (potentially long)
+			// embedded heading list.
+			return exitInputErr, errInvalidUsage
+		}
+
+		lastTitle = meta.Title
+		lastFromVersion = meta.Version.Number
+		lastToVersion = meta.Version.Number + 1
+
+		// 3. Push the new ADF.
+		uErr := client.UpdatePage(pageID, meta.Title, lastToVersion, result, message, dryRun, stderr)
+		if uErr == nil {
+			break // success
+		}
+		if adf.IsConflict(uErr) && attempt == 0 {
+			// Someone else updated the page; retry once with fresh state.
+			fmt.Fprintln(stderr, "notice: page version changed during apply — refetching and retrying once")
+			continue
+		}
+		fmt.Fprintln(stderr, "update failed:", uErr)
+		return exitUnknownErr, uErr
+	}
+
+	if dryRun {
+		return exitOK, nil
+	}
+	// Auto-refresh the home cache if this write touched the Home page.
+	refreshHomeCacheAfterWrite(pageID, client, stderr)
+
+	url := fmt.Sprintf("%s/spaces/%s/pages/%s", client.BaseURL(), defaultCloud, pageID)
+	fmt.Fprintf(stdout, `{"status":"ok","pageId":%q,"title":%q,"fromVersion":%d,"toVersion":%d,"url":%q}`+"\n",
+		pageID, lastTitle, lastFromVersion, lastToVersion, url)
+	return exitOK, nil
+}
+
+// headingLevelFromNode is a thin wrapper to expose heading level for the
+// section-list error message in runPageApply. Mirrors adf.headingLevel.
+func headingLevelFromNode(n adf.Node) int {
+	if n.Attrs == nil {
+		return 1
+	}
+	switch v := n.Attrs["level"].(type) {
+	case int:
+		return v
+	case float64:
+		return int(v)
+	}
+	return 1
+}
+
+// allText collects the inline text of a node tree (for printing heading text).
+func allText(n adf.Node) string {
+	var sb strings.Builder
+	collectAllText(n, &sb)
+	return sb.String()
+}
+
+func collectAllText(n adf.Node, sb *strings.Builder) {
+	if n.Text != "" {
+		sb.WriteString(n.Text)
+	}
+	for _, c := range n.Content {
+		collectAllText(c, sb)
+	}
+}
+
+// runSearch runs a CQL query against Confluence and prints results as TSV
+// (pageId\ttitle\turl\texcerpt). Defaults the space filter to `lybel`.
+func runSearch(args []string, stdout, stderr io.Writer) (int, error) {
+	var (
+		query   string
+		rawCQL  string
+		space   string
+		limit   int
+		asJSON  bool
+	)
+
+	remaining, cloud, email, token, err := parseCommonPageFlags(args)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return exitInputErr, errInvalidUsage
+	}
+
+	for i := 0; i < len(remaining); i++ {
+		a := remaining[i]
+		switch a {
+		case "--cql":
+			if i+1 >= len(remaining) {
+				fmt.Fprintln(stderr, "--cql requires a value")
+				return exitInputErr, errInvalidUsage
+			}
+			rawCQL = remaining[i+1]
+			i++
+		case "--space":
+			if i+1 >= len(remaining) {
+				fmt.Fprintln(stderr, "--space requires a value")
+				return exitInputErr, errInvalidUsage
+			}
+			space = remaining[i+1]
+			i++
+		case "--limit":
+			if i+1 >= len(remaining) {
+				fmt.Fprintln(stderr, "--limit requires a value")
+				return exitInputErr, errInvalidUsage
+			}
+			n, sErr := strconv.Atoi(remaining[i+1])
+			if sErr != nil || n < 1 || n > 250 {
+				fmt.Fprintln(stderr, "--limit must be an integer between 1 and 250")
+				return exitInputErr, errInvalidUsage
+			}
+			limit = n
+			i++
+		case "--json":
+			asJSON = true
+		case "-h", "--help":
+			fmt.Fprintln(stdout, "search — CQL search via the Confluence v1 search API. TSV output by default.")
+			fmt.Fprintln(stdout, "")
+			fmt.Fprintln(stdout, "  lybel-docs search \"term\"                  # title or text match in default space")
+			fmt.Fprintln(stdout, "  lybel-docs search --cql 'space=lybel AND label=\"adr\"'")
+			fmt.Fprintln(stdout, "  lybel-docs search \"term\" --limit 5 --json")
+			return exitOK, nil
+		default:
+			if strings.HasPrefix(a, "-") {
+				fmt.Fprintln(stderr, "unknown flag:", a)
+				return exitInputErr, errInvalidUsage
+			}
+			query = a
+		}
+	}
+
+	if rawCQL == "" && query == "" {
+		fmt.Fprintln(stderr, "search: provide a query term or --cql RAW")
+		return exitInputErr, errInvalidUsage
+	}
+	if space == "" {
+		space = defaultCloud // "lybel"
+	}
+	if limit == 0 {
+		limit = 10
+	}
+
+	cql := rawCQL
+	if cql == "" {
+		// CQL string-literals use double quotes; escape any in the query.
+		safe := strings.ReplaceAll(query, `"`, `\"`)
+		cql = fmt.Sprintf(`space = "%s" AND type = "page" AND (title ~ "%s" OR text ~ "%s")`,
+			space, safe, safe)
+	}
+
+	client, ok := buildClient(cloud, email, token, stderr)
+	if !ok {
+		return exitUnknownErr, nil
+	}
+
+	results, err := client.SearchCQL(cql, limit)
+	if err != nil {
+		fmt.Fprintln(stderr, "search error:", err)
+		return exitUnknownErr, err
+	}
+
+	if asJSON {
+		out, _ := json.MarshalIndent(results, "", "  ")
+		fmt.Fprintln(stdout, string(out))
+		return exitOK, nil
+	}
+
+	if len(results) == 0 {
+		fmt.Fprintln(stderr, "no results")
+		return exitOK, nil
+	}
+	for _, r := range results {
+		// TSV: id\ttitle\turl\texcerpt — newlines in excerpt already collapsed
+		excerpt := r.Excerpt
+		if len(excerpt) > 200 {
+			excerpt = excerpt[:200] + "…"
+		}
+		fmt.Fprintf(stdout, "%s\t%s\t%s\t%s\n", r.PageID, r.Title, r.URL, excerpt)
+	}
+	return exitOK, nil
+}
+
+// runHome manages the local Home cache. Verbs: refresh (force GET), status
+// (print metadata), show (print rendered text), query (search content),
+// digest (print cached digest).
+//
+// The cache is read-only for navigation. Writes to the Home (or any page)
+// always go through `page apply`, which always GETs fresh ADF before PUT —
+// the cache is never the source of truth for an update.
+func runHome(args []string, stdout, stderr io.Writer) (int, error) {
+	// Default TTL: how long the cache is "fresh enough" without re-fetching.
+	// Read paths (--query/--show/--digest) auto-refresh if the cache is older
+	// than this; --refresh always fetches regardless. Cross-session staleness
+	// is bounded by this value.
+	const defaultMaxAge = 1 * time.Hour
+
+	var (
+		refresh    bool
+		status     bool
+		show       bool
+		showDigest bool
+		query      string
+		maxAge     time.Duration = defaultMaxAge
+		pageID     string        = "164232" // Home is locked to this ID for now
+	)
+
+	remaining, cloud, email, token, err := parseCommonPageFlags(args)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return exitInputErr, errInvalidUsage
+	}
+
+	for i := 0; i < len(remaining); i++ {
+		a := remaining[i]
+		switch a {
+		case "--refresh":
+			refresh = true
+		case "--status":
+			status = true
+		case "--show":
+			show = true
+		case "--digest":
+			showDigest = true
+		case "--query":
+			if i+1 >= len(remaining) {
+				fmt.Fprintln(stderr, "--query requires a value")
+				return exitInputErr, errInvalidUsage
+			}
+			query = remaining[i+1]
+			i++
+		case "--max-age":
+			if i+1 >= len(remaining) {
+				fmt.Fprintln(stderr, "--max-age requires a duration (e.g. 1h, 30m)")
+				return exitInputErr, errInvalidUsage
+			}
+			d, dErr := time.ParseDuration(remaining[i+1])
+			if dErr != nil {
+				fmt.Fprintln(stderr, "--max-age:", dErr)
+				return exitInputErr, errInvalidUsage
+			}
+			maxAge = d
+			i++
+		case "--page-id":
+			// Allow override for advanced users / testing
+			if i+1 >= len(remaining) {
+				fmt.Fprintln(stderr, "--page-id requires a value")
+				return exitInputErr, errInvalidUsage
+			}
+			pageID = remaining[i+1]
+			i++
+		case "-h", "--help":
+			fmt.Fprintln(stdout, "home — Lybel Confluence Home page cache.")
+			fmt.Fprintln(stdout, "")
+			fmt.Fprintln(stdout, "  lybel-docs home --refresh             # always fetch + overwrite cache")
+			fmt.Fprintln(stdout, "  lybel-docs home --status              # show cache metadata (read-only)")
+			fmt.Fprintln(stdout, "  lybel-docs home --show                # print cached text")
+			fmt.Fprintln(stdout, "  lybel-docs home --query \"advisor\"     # grep cached content")
+			fmt.Fprintln(stdout, "  lybel-docs home --digest              # print cached page digest")
+			fmt.Fprintln(stdout, "")
+			fmt.Fprintln(stdout, "Auto-refresh rules:")
+			fmt.Fprintln(stdout, "  --query/--show/--digest auto-refresh when the cache is missing OR")
+			fmt.Fprintln(stdout, "  older than --max-age (default 1h). Callers don't need to think about it.")
+			fmt.Fprintln(stdout, "  --refresh ALWAYS fetches, ignoring TTL — use it after another machine")
+			fmt.Fprintln(stdout, "  edited the Home and you want immediate sync.")
+			fmt.Fprintln(stdout, "  Writes to the Home (page apply, index add/remove/sync) auto-refresh")
+			fmt.Fprintln(stdout, "  the cache after the PUT succeeds.")
+			fmt.Fprintln(stdout, "")
+			fmt.Fprintln(stdout, "The cache is read-only for navigation: writes always GET fresh ADF")
+			fmt.Fprintln(stdout, "before PUT (atomic), so the cache is never used as the source for an update.")
+			return exitOK, nil
+		default:
+			fmt.Fprintln(stderr, "unknown flag:", a)
+			return exitInputErr, errInvalidUsage
+		}
+	}
+
+	// Default action: if no verb given, --status
+	if !refresh && !status && !show && !showDigest && query == "" {
+		status = true
+	}
+
+	// --refresh: always fetch, never short-circuit on cache freshness.
+	// The whole point of an explicit --refresh is "I know I want fresh data".
+	if refresh {
+		client, ok := buildClient(cloud, email, token, stderr)
+		if !ok {
+			return exitUnknownErr, nil
+		}
+		c, fErr := fetchHomeCache(client, pageID)
+		if fErr != nil {
+			fmt.Fprintln(stderr, "refresh failed:", fErr)
+			return exitUnknownErr, fErr
+		}
+		if sErr := adf.SaveHomeCache(c); sErr != nil {
+			fmt.Fprintln(stderr, "saving cache:", sErr)
+			return exitUnknownErr, sErr
+		}
+		path, _ := adf.HomeCachePath()
+		fmt.Fprintf(stdout, "ok — %s (cached at %s)\n", c.FormatStatus(), path)
+		return exitOK, nil
+	}
+
+	// Read paths: load cache; auto-refresh if missing or stale (TTL).
+	// --status is a read-only metadata check and should NOT auto-refresh.
+	cache, loadErr := adf.LoadHomeCache()
+	needRefresh := false
+	if loadErr != nil {
+		if os.IsNotExist(loadErr) {
+			needRefresh = (show || showDigest || query != "")
+			if !needRefresh {
+				fmt.Fprintln(stderr, "no home cache. Run: lybel-docs home --refresh")
+				return exitUnknownErr, loadErr
+			}
+		} else {
+			fmt.Fprintln(stderr, "loading cache:", loadErr)
+			return exitUnknownErr, loadErr
+		}
+	} else if !status && cache.IsStale(maxAge) {
+		needRefresh = true
+	}
+
+	if needRefresh {
+		why := "missing"
+		if cache != nil {
+			why = fmt.Sprintf("stale by %s", formatDurationCompact(cache.Age()))
+		}
+		fmt.Fprintf(stderr, "(home cache auto-refreshed: %s)\n", why)
+		client, ok := buildClient(cloud, email, token, stderr)
+		if !ok {
+			return exitUnknownErr, nil
+		}
+		c, fErr := fetchHomeCache(client, pageID)
+		if fErr != nil {
+			fmt.Fprintln(stderr, "auto-refresh failed:", fErr)
+			return exitUnknownErr, fErr
+		}
+		if sErr := adf.SaveHomeCache(c); sErr != nil {
+			fmt.Fprintln(stderr, "saving cache:", sErr)
+			return exitUnknownErr, sErr
+		}
+		cache = c
+	}
+
+	if status {
+		fmt.Fprintln(stdout, cache.FormatStatus())
+		path, _ := adf.HomeCachePath()
+		fmt.Fprintf(stdout, "  path: %s\n", path)
+		fmt.Fprintf(stdout, "  url:  %s\n", cache.URL)
+		fmt.Fprintf(stdout, "  size: %d bytes (text content)\n", len(cache.TextContent))
+		return exitOK, nil
+	}
+	if showDigest {
+		fmt.Fprint(stdout, cache.Digest.FormatText())
+		return exitOK, nil
+	}
+	if show {
+		fmt.Fprint(stdout, cache.TextContent)
+		return exitOK, nil
+	}
+	if query != "" {
+		matches := grepHome(cache.TextContent, query)
+		if len(matches) == 0 {
+			fmt.Fprintf(stderr, "no matches for %q in cached home (v%d)\n", query, cache.Version)
+			return exitOK, nil
+		}
+		for _, m := range matches {
+			if m.heading != "" {
+				fmt.Fprintf(stdout, "## %s\n", m.heading)
+			}
+			fmt.Fprintf(stdout, "  %s\n", m.line)
+		}
+		return exitOK, nil
+	}
+
+	return exitOK, nil
+}
+
+// fetchHomeCache fetches the Home page and builds a HomeCache (digest + text
+// rendering) without writing to disk. Caller is responsible for SaveHomeCache.
+func fetchHomeCache(client *adf.ConfluenceClient, pageID string) (*adf.HomeCache, error) {
+	meta, err := client.GetPage(pageID, "atlas_doc_format")
+	if err != nil {
+		return nil, fmt.Errorf("get home page: %w", err)
+	}
+	if meta.Body.AtlasDocFormat.Value == "" {
+		return nil, fmt.Errorf("home page has no ADF body")
+	}
+	doc, err := adf.UnmarshalDoc([]byte(meta.Body.AtlasDocFormat.Value))
+	if err != nil {
+		return nil, fmt.Errorf("parse home ADF: %w", err)
+	}
+	url := client.PageURL(meta.Links.WebUI)
+	digest := adf.BuildDigest(doc, meta.ID, meta.Title, url, meta.Version.Number)
+	textContent := adf.RenderText(doc)
+	return &adf.HomeCache{
+		FetchedAt:   time.Now().UTC(),
+		PageID:      meta.ID,
+		Title:       meta.Title,
+		Version:     meta.Version.Number,
+		URL:         url,
+		TextContent: textContent,
+		Digest:      digest,
+	}, nil
+}
+
+// refreshHomeCacheAfterWrite re-fetches and saves the Home cache when a write
+// operation has just modified the Home page. This is the auto-refresh-on-write
+// path: the caller's session sees the new state immediately, without needing
+// an explicit `home --refresh`.
+//
+// No-op when pageID isn't the Home (the only page we cache today). Errors
+// are reported to stderr but don't fail the calling write — the write itself
+// already succeeded; cache freshness is best-effort.
+func refreshHomeCacheAfterWrite(pageID string, client *adf.ConfluenceClient, stderr io.Writer) {
+	if pageID != homePageID {
+		return
+	}
+	c, err := fetchHomeCache(client, homePageID)
+	if err != nil {
+		fmt.Fprintf(stderr, "(warning: home cache refresh after write failed: %v)\n", err)
+		return
+	}
+	if err := adf.SaveHomeCache(c); err != nil {
+		fmt.Fprintf(stderr, "(warning: saving refreshed home cache failed: %v)\n", err)
+		return
+	}
+	fmt.Fprintf(stderr, "(home cache auto-refreshed: v%d)\n", c.Version)
+}
+
+// homeMatch is a single hit from grepHome.
+type homeMatch struct {
+	heading string // closest preceding heading, "" if none
+	line    string // the matched line, trimmed
+}
+
+// grepHome does a case-insensitive substring search over the cached Home text
+// content. Each match carries the closest preceding heading as section context,
+// so the LLM caller can see where it lives.
+//
+// Headings are detected by the markdown-ish output of adf.RenderText (lines
+// starting with `# `, `## `, etc.). A 30-line break between matches with the
+// same heading collapses them into a single bullet group.
+func grepHome(content, query string) []homeMatch {
+	if query == "" {
+		return nil
+	}
+	q := strings.ToLower(query)
+	var matches []homeMatch
+	currentHeading := ""
+	for _, line := range strings.Split(content, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		if isMarkdownHeading(trimmed) {
+			currentHeading = trimHashPrefix(trimmed)
+			continue
+		}
+		if strings.Contains(strings.ToLower(trimmed), q) {
+			matches = append(matches, homeMatch{heading: currentHeading, line: trimmed})
+		}
+	}
+	// Dedupe: collapse consecutive matches under the same heading.
+	if len(matches) <= 1 {
+		return matches
+	}
+	out := make([]homeMatch, 0, len(matches))
+	for i, m := range matches {
+		if i > 0 && m.heading == matches[i-1].heading {
+			out = append(out, homeMatch{heading: "", line: m.line})
+			continue
+		}
+		out = append(out, m)
+	}
+	return out
+}
+
+func isMarkdownHeading(line string) bool {
+	if len(line) < 2 || line[0] != '#' {
+		return false
+	}
+	i := 0
+	for i < len(line) && line[i] == '#' {
+		i++
+	}
+	return i >= 1 && i <= 6 && i < len(line) && line[i] == ' '
+}
+
+func trimHashPrefix(line string) string {
+	i := 0
+	for i < len(line) && line[i] == '#' {
+		i++
+	}
+	return strings.TrimSpace(line[i:])
+}
+
+// formatDurationCompact: 5s, 12m, 3h, 2d
+func formatDurationCompact(d time.Duration) string {
+	s := int(d.Seconds())
+	if s < 60 {
+		return fmt.Sprintf("%ds", s)
+	}
+	m := s / 60
+	if m < 60 {
+		return fmt.Sprintf("%dm", m)
+	}
+	h := m / 60
+	if h < 24 {
+		return fmt.Sprintf("%dh", h)
+	}
+	return fmt.Sprintf("%dd", h/24)
 }
 
 // runLint validates an ADF file and prints findings.
@@ -1226,6 +2248,12 @@ func runIndexAdd(args []string, stdout, stderr io.Writer) (int, error) {
 		return exitUnknownErr, err
 	}
 
+	// Auto-refresh home cache only if we wrote to the live API (not --input file
+	// and not dry-run). ctx.pageID is set when the doc was loaded from the API.
+	if !dryRun && ctx.pageID != "" {
+		refreshHomeCacheAfterWrite(ctx.pageID, client, stderr)
+	}
+
 	fmt.Fprintf(stdout, `{"status":"ok","pageId":%q,"title":%q}`+"\n", pageID, title)
 	return exitOK, nil
 }
@@ -1294,6 +2322,10 @@ func runIndexRemove(args []string, stdout, stderr io.Writer) (int, error) {
 	if err := saveIndexPage(ctx, updated, client, "index remove: "+pageID, dryRun, stderr); err != nil {
 		fmt.Fprintln(stderr, "saving:", err)
 		return exitUnknownErr, err
+	}
+
+	if !dryRun && ctx.pageID != "" {
+		refreshHomeCacheAfterWrite(ctx.pageID, client, stderr)
 	}
 
 	fmt.Fprintf(stdout, `{"status":"ok","removed":%q}`+"\n", pageID)
@@ -1447,6 +2479,10 @@ func runIndexSync(args []string, stdout, stderr io.Writer) (int, error) {
 	if err := saveIndexPage(ctx, doc, client, "index sync", dryRun, stderr); err != nil {
 		fmt.Fprintln(stderr, "saving:", err)
 		return exitUnknownErr, err
+	}
+
+	if !dryRun && ctx.pageID != "" && added > 0 {
+		refreshHomeCacheAfterWrite(ctx.pageID, client, stderr)
 	}
 
 	fmt.Fprintf(stdout, `{"status":"ok","added":%d}`+"\n", added)

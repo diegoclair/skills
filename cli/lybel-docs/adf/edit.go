@@ -92,6 +92,23 @@ func DeleteSection(doc Node, headingText string) (Node, error) {
 	return out, nil
 }
 
+// SectionContent returns a sub-document containing only the matched section
+// (heading + body until the next heading of equal-or-higher level). Useful
+// for `page get --section` where the caller wants just the slice without
+// fetching the whole page through a separate code path.
+//
+// The returned Node is a doc node so the result is renderable by the same
+// machinery that handles full pages (Marshal, RenderText, etc.).
+func SectionContent(doc Node, headingText string, atLevel int) (Node, error) {
+	idx, end, ok := findSectionBoundsAtLevel(doc.Content, headingText, atLevel)
+	if !ok {
+		return Node{}, fmt.Errorf("section not found: %q", headingText)
+	}
+	out := doc
+	out.Content = append([]Node{}, doc.Content[idx:end]...)
+	return out, nil
+}
+
 // findSectionBounds locates the top-level heading whose inline text matches
 // target (case-sensitive, trimmed). Returns [start, end) indices such that
 // start is the heading index and end is the first index that does NOT belong

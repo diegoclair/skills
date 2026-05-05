@@ -327,6 +327,55 @@ func TestPageGet_MissingPageID(t *testing.T) {
 	}
 }
 
+func TestPageGet_SectionRejectsHTMLFormats(t *testing.T) {
+	_, errOut, code := runCLI(t, "page", "get",
+		"--page-id", "123", "--section", "X", "--format", "html")
+	if code == 0 {
+		t.Fatal("expected non-zero exit when --section with --format html")
+	}
+	if !strings.Contains(errOut, "--section is only supported with") {
+		t.Errorf("expected --section format constraint in error: %s", errOut)
+	}
+}
+
+func TestPage_ChildrenIsAliasOfListChildren(t *testing.T) {
+	// Both `page children` and `page list-children` should hit the same
+	// validation path. Without --page-id, both must reject with the new
+	// canonical error message.
+	for _, verb := range []string{"children", "list-children"} {
+		_, errOut, code := runCLI(t, "page", verb)
+		if code == 0 {
+			t.Errorf("verb %q: expected non-zero exit when --page-id missing", verb)
+		}
+		if !strings.Contains(errOut, "--page-id") {
+			t.Errorf("verb %q: expected --page-id in error: %s", verb, errOut)
+		}
+	}
+}
+
+func TestPage_UnknownVerbListsChildren(t *testing.T) {
+	// The "valid verbs" list should include `children` (canonical) — verifies
+	// help message is in sync with the dispatcher.
+	_, errOut, code := runCLI(t, "page", "bogus-verb")
+	if code == 0 {
+		t.Fatal("expected non-zero exit for unknown verb")
+	}
+	if !strings.Contains(errOut, "children") {
+		t.Errorf("expected 'children' in valid verbs list: %s", errOut)
+	}
+}
+
+func TestPageGet_UnknownFormat(t *testing.T) {
+	_, errOut, code := runCLI(t, "page", "get",
+		"--page-id", "123", "--format", "bogus")
+	if code == 0 {
+		t.Fatal("expected non-zero exit for unknown format")
+	}
+	if !strings.Contains(errOut, "unknown format") {
+		t.Errorf("expected 'unknown format' in error: %s", errOut)
+	}
+}
+
 func TestPageUpload_MissingArgs(t *testing.T) {
 	_, errOut, code := runCLI(t, "page", "upload", "--page-id", "123")
 	if code == 0 {
@@ -344,6 +393,118 @@ func TestPageCreate_MissingTitle(t *testing.T) {
 	}
 	if !strings.Contains(errOut, "--title") {
 		t.Errorf("expected --title mention in error: %s", errOut)
+	}
+}
+
+// ── page digest / apply / search validation ────────────────────────────────────
+
+func TestPageDigest_MissingPageID(t *testing.T) {
+	_, errOut, code := runCLI(t, "page", "digest")
+	if code == 0 {
+		t.Fatal("expected non-zero exit when --page-id missing")
+	}
+	if !strings.Contains(errOut, "--page-id") {
+		t.Errorf("expected --page-id in error: %s", errOut)
+	}
+}
+
+func TestPageApply_NoOperation(t *testing.T) {
+	_, errOut, code := runCLI(t, "page", "apply", "--page-id", "123")
+	if code == 0 {
+		t.Fatal("expected non-zero exit when no operation specified")
+	}
+	if !strings.Contains(errOut, "no operation") {
+		t.Errorf("expected 'no operation' in error: %s", errOut)
+	}
+}
+
+func TestPageApply_ReplaceSection_RequiresFragment(t *testing.T) {
+	_, errOut, code := runCLI(t, "page", "apply", "--page-id", "123",
+		"--replace-section", "Roadmap")
+	if code == 0 {
+		t.Fatal("expected non-zero exit when --fragment missing")
+	}
+	if !strings.Contains(errOut, "--fragment") {
+		t.Errorf("expected --fragment in error: %s", errOut)
+	}
+}
+
+func TestPageApply_DeleteSection_NoFragmentOK(t *testing.T) {
+	// Delete-section is the only op that doesn't need a fragment. The flag
+	// validation should pass; the command will then fail on missing creds,
+	// which is fine — we only care that the validation gate let it through.
+	_, _, code := runCLI(t, "page", "apply", "--page-id", "123",
+		"--delete-section", "Old")
+	// Will fail on credentials (no real call), but NOT on flag validation.
+	// exitInputErr (2) == flag-validation failure; anything else means we got past it.
+	if code == exitInputErr {
+		t.Errorf("delete-section should not require --fragment, got exit %d", code)
+	}
+}
+
+func TestSearch_NoArgs(t *testing.T) {
+	_, errOut, code := runCLI(t, "search")
+	if code == 0 {
+		t.Fatal("expected non-zero exit when no query")
+	}
+	if !strings.Contains(errOut, "query") {
+		t.Errorf("expected 'query' in error: %s", errOut)
+	}
+}
+
+func TestPageApply_TableAddRow_RequiresRow(t *testing.T) {
+	_, errOut, code := runCLI(t, "page", "apply", "--page-id", "123",
+		"--table-add-row", "Index")
+	if code == 0 {
+		t.Fatal("expected non-zero exit when --row missing")
+	}
+	if !strings.Contains(errOut, "--row") {
+		t.Errorf("expected --row in error: %s", errOut)
+	}
+}
+
+func TestPageApply_TableRemoveRow_RequiresMatchCell(t *testing.T) {
+	_, errOut, code := runCLI(t, "page", "apply", "--page-id", "123",
+		"--table-remove-row", "Index")
+	if code == 0 {
+		t.Fatal("expected non-zero exit when --match-cell missing")
+	}
+	if !strings.Contains(errOut, "--match-cell") {
+		t.Errorf("expected --match-cell in error: %s", errOut)
+	}
+}
+
+func TestHome_HelpFlag(t *testing.T) {
+	out, _, code := runCLI(t, "home", "--help")
+	if code != 0 {
+		t.Fatalf("want exit 0, got %d", code)
+	}
+	if !strings.Contains(out, "--refresh") {
+		t.Errorf("expected --refresh in help: %s", out)
+	}
+}
+
+func TestHome_StatusNoCache(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("XDG_CACHE_HOME", tmp)
+	t.Setenv("HOME", tmp)
+
+	_, errOut, code := runCLI(t, "home", "--status")
+	if code == 0 {
+		t.Fatal("expected non-zero exit when cache missing")
+	}
+	if !strings.Contains(errOut, "no home cache") {
+		t.Errorf("expected 'no home cache' message: %s", errOut)
+	}
+}
+
+func TestHome_QueryUnknownFlag(t *testing.T) {
+	_, errOut, code := runCLI(t, "home", "--bogus")
+	if code == 0 {
+		t.Fatal("expected non-zero exit for unknown flag")
+	}
+	if !strings.Contains(errOut, "unknown flag") {
+		t.Errorf("expected 'unknown flag': %s", errOut)
 	}
 }
 

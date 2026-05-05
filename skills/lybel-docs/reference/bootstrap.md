@@ -19,18 +19,19 @@ The **current data** (who the advisors are today, which accelerators are in prog
 
 ## Bootstrap procedure
 
-In every new session involving the Lybel KB, Claude must:
+In every new session involving the Lybel KB, Claude just queries the cache directly. The CLI handles freshness — you don't track sessions, TTLs, or cache state.
 
-1. **Read the Confluence Home:**
+1. **Query the cache for navigation:**
    ```
-   mcp__atlassian__getConfluencePage(
-     cloudId="ab1dada3-b25e-40ad-9dbc-682caeea8d00",
-     pageId="164232",
-     contentFormat="markdown"
-   )
+   lybel-docs home --query "advisor"      # alias / decision lookup
+   lybel-docs home --digest               # outline view
+   lybel-docs home --show                 # full text rendering
    ```
+   These commands auto-refresh the cache when it's missing or older than 1h. No need to run `home --refresh` first.
 
-2. **Extract from the Home:**
+   If the CLI is unavailable, fall back to `mcp__atlassian__getConfluencePage(pageId="164232", contentFormat="markdown")` and operate from in-memory data.
+
+2. **Extract from the Home content:**
    - **"Onde coloco X?" table** — current decision map for routing
    - **"Aliases" section** — keywords → pages (including current proper names: people, companies, vendors)
    - **"Page ID Index" section** (if present) — IDs of structural parents (categories, sub-categories, departments)
@@ -38,11 +39,19 @@ In every new session involving the Lybel KB, Claude must:
 
 3. **Use this data as source of truth** for the rest of the conversation.
 
+4. **Writes to the Home auto-refresh the cache.** When you `page apply` / `index add` / `index remove` / `index sync` on the Home page (pageId 164232), the cache is automatically refreshed after the PUT succeeds. You don't need to call `home --refresh` after writes.
+
+5. **The cache is shared across all Claude sessions on the same machine.** If one session refreshes (manually or via a write), every other session reading next sees the updated state automatically. No per-session bookkeeping needed.
+
+6. **`home --refresh`** exists for the rare case where you know another machine just updated the Home and you don't want to wait for the 1h TTL. It always fetches, ignoring the cache.
+
+**Why this design:** the cache costs at most one GET per hour per machine and zero per query within that hour. The MCP route, in contrast, would re-fetch the Home (10-25 KB ADF) for every navigation question — death by a thousand reads. The cache also enforces a clean invariant: it is **read-only for navigation**, and `page apply` always GETs fresh ADF before any PUT, so we never overwrite changes someone made on another machine.
+
 ---
 
 ## Fallback
 
-If the Home is inaccessible (auth error, MCP offline, page deleted), use the static files:
+If the Home is inaccessible (auth error, both CLI and MCP offline, page deleted), use the static files:
 
 - `taxonomy.md` — generic structure of the 6 categories
 - `aliases.md` — generic keyword patterns

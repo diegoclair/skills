@@ -4,10 +4,13 @@ This file defines deterministic flows. When the user asks for one of the actions
 
 **Conventions:**
 - `cloudId` = `ab1dada3-b25e-40ad-9dbc-682caeea8d00` (always the same).
-- Space = `Lybel`.
-- When creating a page, use `mcp__atlassian__createConfluencePage` with the correct `parentId`.
-- When editing (e.g. updating the parent's summary table), use `mcp__atlassian__updateConfluencePage`.
-- When searching, prefer `mcp__atlassian__searchConfluenceUsingCql` with a lean CQL.
+- Space = `Lybel` (key `lybel`, ID `131352`).
+- **Tool priority:** prefer the Go CLI (`lybel-docs ...`) over the Atlassian MCP. The CLI returns sub-KB summaries; MCP returns full ADF bodies (10–40 KB). See SKILL.md §"Tool preferences" for the canonical table.
+- **Read a page (3-step cascade):** `page digest` (outline + Status field) → `page get --section "Y" --format text` (one section as plain text) → `page get --format text` (whole page) → `page get --format export_view` / MCP `getConfluencePage(markdown)` only as fallback. Never load the whole ADF when you just need one section.
+- **"Qual o status de X?"** is usually answered by the `Status:` line in `page digest` output alone (Lybel pages prefix titles with status emojis 🟢🟡🟠🔴🔵⚪✅ which the digest parses).
+- **Create a page:** `lybel-docs page create --space-id 131352 --parent-id PID --title T --markdown FILE`. Fallback: MCP `createConfluencePage`.
+- **Update a section:** `lybel-docs page apply --page-id ID --replace-section "Heading" --fragment FILE` (atomic GET→edit→PUT with 409 retry). Fallback: `page get` + `edit` + `page upload`. Last resort: MCP `getConfluencePage(adf)` + `updateConfluencePage(adf)`.
+- **Search:** `lybel-docs search "term" --limit 5`. Fallback: MCP `searchConfluenceUsingCql`.
 - **PageIds of parents (categories, sub-categories, departments)** come from the Home (Page ID Index) — always run Workflow 0 before other workflows in the session.
 
 ---
@@ -20,14 +23,13 @@ This file defines deterministic flows. When the user asks for one of the actions
 
 **Steps:**
 
-1. **Read the Confluence Home:**
+1. **Just query the cache directly — it auto-refreshes when stale:**
    ```
-   mcp__atlassian__getConfluencePage(
-     cloudId="ab1dada3-b25e-40ad-9dbc-682caeea8d00",
-     pageId="164232",
-     contentFormat="markdown"
-   )
+   lybel-docs home --query "<term>"   # alias / decision-map lookup
+   lybel-docs home --digest           # outline + heading list
+   lybel-docs home --show             # full text rendering
    ```
+   These commands handle freshness internally: if the cache file is missing or older than 1h, they auto-fetch from Confluence and serve. You don't have to track when to refresh.
 
 2. **Extract from the Home:**
    - **"Onde coloco X?" table** — current decision map for routing
@@ -37,13 +39,21 @@ This file defines deterministic flows. When the user asks for one of the actions
 
 3. **Use this data as source of truth** for the rest of the conversation. If it conflicts with `taxonomy.md` / `aliases.md` / `templates.md`, **the Home wins**.
 
-4. **Fallback:** if the Home is inaccessible (auth error, page deleted, MCP down), use the static files:
+4. **Writes auto-refresh the cache.** When you call `page apply` / `index add` / `index remove` / `index sync` and the target is the Home page (pageId 164232), the cache is automatically re-fetched after the PUT succeeds. You don't need to refresh manually after writes.
+
+5. **The cache is shared across all Claude sessions on the same machine.** If one session refreshes (manually or via a write), every other session reading next sees the new state.
+
+6. **`home --refresh`** exists only for the rare "another machine just updated; I don't want to wait for the 1h TTL" case. It always fetches.
+
+7. **Fallback:** if the CLI is unavailable, use MCP `getConfluencePage(pageId="164232", contentFormat="markdown")` and operate from in-memory data. If both are inaccessible, use the static files:
    - `taxonomy.md` (generic structure)
    - `aliases.md` (generic keyword patterns)
    - `templates.md` (formats)
    - `bootstrap.md` (this principle)
 
    Warn the user: "Home indisponível, operando em modo degradado com schema genérico — pageIds de parents podem estar desatualizados."
+
+**Cache safety invariant:** the cache is **read-only for navigation**. Writes to the Home (or any page) ALWAYS go through `page apply`, which GETs fresh ADF from Confluence before any PUT. The cache is never used as the source for an update — this is what protects against overwriting work someone did on a different machine.
 
 ---
 
@@ -157,16 +167,22 @@ This file defines deterministic flows. When the user asks for one of the actions
 
 2. **Check aliases (Home + `aliases.md`).** If the term (or close synonym) is mapped, return the indicated page/parent directly.
 
-3. **If not in aliases**, run CQL:
+3. **If not in aliases**, run the CLI search (preferred):
+   ```
+   lybel-docs search "TERM" --limit 10
+   ```
+   This expands to `space = "lybel" AND type = "page" AND (title ~ "TERM" OR text ~ "TERM")`. Output is TSV (`pageId<TAB>title<TAB>url<TAB>excerpt`).
+   - For raw CQL control: `lybel-docs search --cql 'space=lybel AND label="adr"'`.
+   - Try pt-BR variants (with/without accents): "fraude" and "fraudes", "investidor" and "investidora".
+
+   **Fallback** (CLI unavailable):
    ```
    mcp__atlassian__searchConfluenceUsingCql(
      cloudId="ab1dada3-b25e-40ad-9dbc-682caeea8d00",
-     cql='space = "Lybel" AND (title ~ "TERM" OR text ~ "TERM") AND type = page',
+     cql='space = "lybel" AND (title ~ "TERM" OR text ~ "TERM") AND type = page',
      limit=10
    )
    ```
-   - Prefer `title ~` first (more precise matches). If zero results, try `text ~`.
-   - Try pt-BR variants (with/without accents): "fraude" and "fraudes", "investidor" and "investidora".
 
 4. **Filter results** to the expected category, if the user gave a hint (e.g. "advogado do time" → prioritize pages under Advisors & Consultores).
 
@@ -332,9 +348,13 @@ This file defines deterministic flows. When the user asks for one of the actions
 
 ## Cross-cutting execution rules
 
-- **Always run Workflow 0 (bootstrap) before any other workflow** in a session. Without it, parent pageIds may be outdated.
-- **Always use `contentFormat="markdown"`** when reading pages — it's more efficient than ADF for parsing tables.
-- **Always update the parent's summary table** when creating a sub-page in a category that has a table (Advisors, Aceleração, Varejistas).
+- **No mandatory bootstrap step** in a session. Just use `home --query/--show/--digest` directly — they auto-refresh when stale. Per-session bookkeeping is gone.
+- **Use the cache for navigation, not API calls.** `home --query "X"` is local and free (auto-refreshes when needed); reach for `page digest` only when the term isn't in the Home and you need to inspect a specific page.
+- **Prefer `digest` to full reads.** Most "qual o status / o que tem em X" questions are answered by the headings outline alone.
+- **For updates, prefer `page apply`** — atomic GET → edit → PUT, with macro preservation and a 409-conflict retry. Supports section ops (`--replace-section`, `--append`, `--insert-after/before`, `--delete-section`) and table ops (`--table-add-row`, `--table-remove-row`). Falls back to `page get` + `edit` + `page upload` only if you need to compose multiple ops in one PUT.
+- **After mutating the Home, refresh the cache** (`home --refresh`) so subsequent local queries see the new state.
+- **Never use `contentFormat="markdown"` on a page with macros** (TOC, expand, panel, status). It silently flattens the structure on update. The CLI uses ADF round-trips internally and never has this risk.
+- **Always update the parent's summary table** when creating a sub-page in a category that has a table (Advisors, Aceleração, Varejistas). Use `page apply --table-add-row "Heading" --row "col1|col2|..." --if-missing` for a single-shot atomic update. (The Home's Page ID Index has a dedicated wrapper: `index add`.)
 - **Always include `## Histórico`** with the creation date on new pages.
 - **Never reference "SmartBuy" or "Qompra"** in new pages — the brand is **Lybel**. If you find old pages with these names, flag to the user but **do not edit without authorization**.
 - **When in doubt, ask once** and proceed. Don't stack questions — the Lybel team prefers action with explicit assumptions over a long interrogation.

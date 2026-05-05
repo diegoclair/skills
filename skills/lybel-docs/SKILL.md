@@ -1,8 +1,9 @@
 ---
 name: lybel-docs
 description: |
-  Navigation assistant for Lybel's Confluence knowledge base (space `lybel` at lybel.atlassian.net). Timeless skill: stores no specific data — at every session, first reads the Home page (pageId 164232) of Confluence, which is the source of truth for current taxonomy, aliases, status and page index. Provides only the structure, workflows and templates; real state lives in Confluence via MCP. Use when the user asks to search, create, list or update documentation, processes, partners, advisors, investors, accelerators, roadmap, strategy or any organizational artifact. Triggers (Portuguese, as the team speaks): "onde fica X", "me dá a página de Y", "cria página pra Z", "lista páginas de W", "qual o status de X", "tem doc sobre Y?", "adiciona isso na wiki", "procura no Confluence", "documenta esse processo", "atualiza a página de Q", "adiciona advisor/parceiro/investidor". Always replies in Brazilian Portuguese (pt-BR) with full URLs to lybel.atlassian.net.
+  Navigation assistant for Lybel's Confluence knowledge base (space `lybel` at lybel.atlassian.net) — search, create, list, update pages. Aliases: confluence, wiki, kb, base de conhecimento, página/doc da Lybel, anota isso, registra isso, salva no doc, joga no wiki. Use for any Lybel documentation: processes, partners, advisors, investors, accelerators, retailers, fornecedores, roadmap, strategy, marca, design system, governance, or organizational artifact — even when "Confluence" isn't said. Triggers (pt-BR): "onde fica X", "me dá a página de Y", "cria página pra Z", "lista X", "qual o status de Y", "tem doc sobre Z", "adiciona isso", "documenta esse processo", "atualiza a página de Q", "adiciona advisor/parceiro/investidor", "anota no kb". Stores no specific data — fresh state lives in Confluence, fetched at session start via local CLI cache (preferred) or Atlassian MCP (fallback). Always replies in pt-BR with full URLs to lybel.atlassian.net.
 allowed-tools: |
+  Bash(lybel-docs *)
   mcp__atlassian__getConfluencePage
   mcp__atlassian__searchConfluenceUsingCql
   mcp__atlassian__getPagesInConfluenceSpace
@@ -11,7 +12,6 @@ allowed-tools: |
   mcp__atlassian__updateConfluencePage
   mcp__atlassian__getConfluenceSpaces
   mcp__atlassian__search
-  Bash(./bin/lybel-docs *)
   Read
   Write
 ---
@@ -34,29 +34,58 @@ When you respond to the user:
 - Keep page titles, category names, and content IN PORTUGUESE (they exist in Portuguese in Confluence)
 - Only technical terms or proper nouns stay in English
 
+## Tool priority — CLI first, MCP as fallback
+
+The `lybel-docs` Go CLI talks directly to the Confluence REST API and is **always the preferred tool** for reads, writes and searches. The Atlassian MCP returns the full ADF body of every page (tens of KB), which inflates the conversation context fast. The CLI returns a small digest, a TSV row, or a one-line status — orders of magnitude cheaper.
+
+**Order of preference for any operation:**
+1. **`lybel-docs ...`** if the binary exists (check with `lybel-docs --version`).
+2. **MCP Atlassian** only when the CLI cannot do the job (rare cases: complex space exploration, attachments, comments, Jira).
+3. **`contentFormat: "markdown"` via MCP** — last resort, ONLY for pages with no macros (it flattens TOC/expand/panel and silently destroys structure).
+
+The CLI also handles credentials, CQL search, ADF section editing with macro preservation, and a 409-conflict retry on writes — all without round-tripping bytes through the conversation.
+
 ## Mandatory bootstrap
 
-In **EVERY new session**, before answering anything about the KB:
+In **EVERY new session**, just use the Home commands directly. The CLI handles freshness — you don't track TTLs, sessions, or cache state.
 
-1. **Read the Confluence Home:**
+1. **Read the cache for navigation — auto-refreshes when stale:**
    ```
-   mcp__atlassian__getConfluencePage(
-     cloudId="ab1dada3-b25e-40ad-9dbc-682caeea8d00",
-     pageId="164232",
-     contentFormat="markdown"
-   )
+   lybel-docs home --query "advisor"           # alias/decision lookup
+   lybel-docs home --query "Aceleração"        # find category + pageId
+   lybel-docs home --digest                    # outline view (~500 bytes)
+   lybel-docs home --show                      # full text rendering
    ```
+   These commands auto-refresh the cache when it's missing or older than 1h. You don't need to run `home --refresh` first. Most navigation answers are in the cache, returning a few hundred bytes per query.
 
-2. **Use the Home content as source of truth** for:
+2. **Use the cached Home content as source of truth** for:
    - Current taxonomy (categories and sub-structures)
    - "Where do I put X?" decision map
    - Aliases (keywords → pages)
    - Page ID Index (if present)
    - Organization rules
 
-3. **Fall back to the generic reference files** (`reference/taxonomy.md`, `reference/aliases.md`, etc.) **only if the Home is inaccessible**.
+3. **Fall back to the generic reference files** (`reference/taxonomy.md`, `reference/aliases.md`, etc.) **only if both the CLI and MCP are inaccessible**.
 
-This skill is deliberately **timeless**. It stores no specific names (advisors, investors, retailers, accelerators) — everything comes fresh from Confluence each session.
+### Cache lifecycle (the contract)
+
+The cache lives at `~/.cache/lybel-docs/home.json` — **a single file shared across all Claude sessions on the same machine**. So if one session refreshes (manually or via auto-refresh-on-write), every other session reading it next sees the updated state automatically. No per-session bookkeeping.
+
+Three rules govern when the cache is updated:
+
+| Trigger | Behavior |
+|---|---|
+| Read with stale cache (>1h old) or missing | **Auto-refresh** before serving. Caller doesn't have to think about it. |
+| Write to the Home via CLI (`page apply`, `index add/remove/sync` on pageId 164232) | **Auto-refresh after PUT** succeeds. Your session sees the new state immediately. |
+| Explicit `home --refresh` | **Always fetches**, ignores TTL. Use only when you know another machine just edited the Home and you don't want to wait for the TTL. |
+
+What this means in practice: in a typical session, you never call `home --refresh` explicitly. You just query/show/digest, and writes refresh themselves.
+
+**WRITE SAFETY (critical):** the cache is **read-only for navigation**. It is **NEVER** the source for an update. Any mutation of the Home (or any page) goes through `page apply`, which always GETs fresh ADF before PUT — ensuring you never overwrite changes someone made on another machine.
+
+This skill is deliberately **timeless**. It stores no specific names (advisors, investors, retailers, accelerators) — everything comes fresh from Confluence whenever you query, with the cache layer making it cheap.
+
+**Token-cost rule of thumb:** prefer cached `home --query/--show` over `page digest` over `page get` over MCP. Only escalate to a full read when the cheaper option doesn't carry the answer.
 
 ## Reference files
 
@@ -70,77 +99,163 @@ This skill is deliberately **timeless**. It stores no specific names (advisors, 
 
 ### 1. Search — "onde fica X" / "tem doc sobre Y?"
 
-1. Look up in the Page ID Index / aliases from the Home (read during bootstrap).
-2. If mapped → `getConfluencePage` directly by `pageId`.
-3. If not mapped → `searchConfluenceUsingCql` with `space = "lybel" AND (title ~ "<term>" OR text ~ "<term>")`.
-4. Return up to 5 results: `- **Title** — summary (full URL)`.
+**Source-of-truth ladder for resolving a term to a pageId.** Try in order; stop at the first one that returns a plausible match. The next `page digest` call functions as the verification step — if the title or content doesn't match expectations, fall back to the next rung.
 
-### 2. Create — "cria página pra Z"
+1. **Memory file or recent conversation context.** If a Claude memory file (e.g. `project_X_relationship.md`) or the current conversation already has a pageId for the term, **use it directly**. Skip steps 2–3. The follow-up `page digest` validates it: a 404, a renamed title, or unrelated content tells you the memory is stale, and you fall back to step 2.
+
+2. **Cached Home (`home --query`).** Local, free, fastest after memory:
+   ```
+   lybel-docs home --query "<term>"
+   ```
+   Hits the Page ID Index, aliases, and "Onde coloco X?" decision map. Returns matching lines grouped by section.
+
+   **Single term per call** — no OR / regex / multi-term syntax. To search multiple terms, run the command multiple times (each call is local and cheap, zero API cost). Same applies to `--show` + `grep` if you need a richer pattern.
+
+3. **CLI search (`search`).** When the term isn't in the Home (new pages, niche topics):
+   ```
+   lybel-docs search "<term>" --limit 5
+   ```
+   Output is TSV: `pageId<TAB>title<TAB>url<TAB>excerpt`. ~150 bytes per result. The default CQL is `space="lybel" AND type="page" AND (title ~ "term" OR text ~ "term")`. Pass `--cql "raw CQL"` for fine control.
+
+4. **Confirm and return.** Once you have a pageId, call `page digest --page-id <id>` to verify the page exists and matches the user's intent before quoting it back. If returning multiple results from `search`, format as bullets: `- **Title** — excerpt (URL)`.
+
+**Fallback** (CLI unavailable): `mcp__atlassian__searchConfluenceUsingCql` with the same CQL filter.
+
+**Why the memory-first rung exists:** memory files capture stable IDs that survive across sessions. Going straight to `page digest` skips two steps with no downside — the digest is cheap and self-validating. Don't over-think it: if you have an ID and a name that matches what the user asked, just check the digest.
+
+### 2. Read a page — "me dá a página de Y" / "o que tem em Z"
+
+**Three-step cascade**, escalate only when needed:
+
+**Step 1 — `digest` (cheapest, ~500 bytes).** Most questions can be answered from the outline alone:
+
+```
+lybel-docs page digest --page-id <id>
+```
+
+The digest also carries a `Status` line when the title starts with a Lybel status emoji (🟢 active, 🟡 in-progress, 🟠 evaluating, 🔴 blocked, 🔵 researched, ⚪ idle, ✅ done). For "qual o status de X" questions, this single field is often the entire answer. Add `--json` to get a structured object.
+
+**Step 2 — `get --section "Heading" --format text` (one section, ~hundreds of bytes).** When the digest tells you which section has the answer, fetch just that section as readable plain text:
+
+```
+lybel-docs page get --page-id <id> --section "📌 Veredito atual" --format text
+```
+
+Section bounds = heading + all following nodes until the next heading of equal-or-higher level (so an h2 includes its h3 children). Use `--at-level N` to disambiguate when the same heading text appears at multiple levels. Output is markdown-ish (`## headings`, `- bullets`, pipe-tables, `[text](url)` links) — readable by a human and trivially parseable by an agent.
+
+**Step 3 — `get` whole page (last resort, multi-KB).** Only when you genuinely need the full content (e.g. you'll be editing several sections):
+
+```
+lybel-docs page get --page-id <id> --format text         # whole page as text
+lybel-docs page get --page-id <id> --format adf          # raw ADF (only if editing)
+lybel-docs page get --page-id <id> --format export_view  # rendered HTML
+```
+
+**`--output FILE` and `--quiet`** are available on all `page get` invocations: `--output` writes to disk instead of stdout; `--quiet` suppresses the "wrote N bytes" stderr message. Use `--quiet` when the caller captures both streams.
+
+### 3. Create — "cria página pra Z"
 
 1. Use the Home's "Where do I put X?" map to discover the correct category/parent.
 2. Choose the template in `reference/templates.md`.
 3. **Confirm with the user** the final title, parent and template before creating.
-4. Generate the content:
-   - **Preferred:** `./bin/lybel-docs adf <template> <args>` (generates rich ADF with tables, expand, TOC, status macros).
-   - **Fallback:** `contentFormat: "markdown"` in the MCP call.
-5. `createConfluencePage` with the correct `parentId`. Return the final URL.
+4. Write the content as markdown to a temp file (e.g. `/tmp/lybel-edit/page.md`). The CLI's `adf` converter supports Confluence macros (`[TOC]`, `:::expand`, `:::warning`, etc.) via extended markdown.
+5. Create directly via the CLI (single command, no MCP round-trip):
+   ```
+   lybel-docs page create \
+     --space-id 131352 --parent-id <parentId> --title "Final Title" \
+     --markdown /tmp/lybel-edit/page.md
+   ```
+6. The CLI prints `{"pageId": "...", "title": "...", "url": "..."}`. Return the final URL to the user.
 
-### 3. Update — "atualiza a página de X" / "adiciona seção Y"
+**Fallback** (CLI unavailable): `mcp__atlassian__createConfluencePage` with `contentFormat: "adf"` after running `lybel-docs adf` to convert the markdown. Last resort: `contentFormat: "markdown"`.
+
+### 4. Update — "atualiza a página de X" / "adiciona seção Y"
 
 **Never build ADF by hand, and never use `contentFormat: "markdown"` to update a page with macros** (TOC, Expand, panel). Markdown update flattens macros and silently destroys structure.
 
-Use `./bin/lybel-docs edit` — it reads current ADF, applies a section-level operation, and returns new ADF. Macros outside the touched section are preserved verbatim.
+**Preferred path (single atomic command):** `lybel-docs page apply` does GET → section-edit → PUT in one shot, with automatic refetch-and-retry on 409 conflict (someone else updated mid-flight). The full ADF never enters the conversation context.
 
-**Workflow** (preferred path, binary available):
+```
+# Replace a single section, preserving every macro outside it
+lybel-docs page apply --page-id <id> \
+  --replace-section "Roadmap" --fragment /tmp/lybel-edit/new.md \
+  --message "rewrite roadmap"
 
-1. Fetch the current page in ADF:
-   ```
-   mcp__atlassian__getConfluencePage(cloudId=..., pageId=..., contentFormat="adf")
-   ```
-2. Extract the `body` JSON from the response and save to a temp file (e.g. `/tmp/lybel-edit/current.json`).
-3. Write the new content as markdown fragment to another temp file (e.g. `/tmp/lybel-edit/fragment.md`). For section replacement, include the heading in the fragment.
-4. Run one operation:
-   ```
-   ./bin/lybel-docs edit -i /tmp/lybel-edit/current.json \
-     --append /tmp/lybel-edit/fragment.md > /tmp/lybel-edit/new.json
+# Append a new section at the end
+lybel-docs page apply --page-id <id> \
+  --append --fragment /tmp/lybel-edit/new.md \
+  --message "add Q3 retrospective"
 
-   ./bin/lybel-docs edit -i /tmp/lybel-edit/current.json \
-     --replace-section "📇 Page ID Index" /tmp/lybel-edit/fragment.md > /tmp/lybel-edit/new.json
+# Insert relative to an existing heading
+lybel-docs page apply --page-id <id> \
+  --insert-after "Research" --fragment /tmp/lybel-edit/new.md
 
-   ./bin/lybel-docs edit -i /tmp/lybel-edit/current.json \
-     --insert-after "🔍 Research" /tmp/lybel-edit/fragment.md > /tmp/lybel-edit/new.json
+lybel-docs page apply --page-id <id> \
+  --insert-before "FAQ" --fragment /tmp/lybel-edit/new.md
 
-   ./bin/lybel-docs edit -i /tmp/lybel-edit/current.json \
-     --delete-section "TODO antigo" > /tmp/lybel-edit/new.json
-   ```
-5. Send the result back with `contentFormat: "adf"`:
-   ```
-   mcp__atlassian__updateConfluencePage(
-     cloudId=..., pageId=..., title=<same>, contentFormat="adf",
-     body=<contents of /tmp/lybel-edit/new.json>,
-     versionMessage="<what changed>"
-   )
-   ```
+# Delete a stale section
+lybel-docs page apply --page-id <id> --delete-section "TODO antigo"
 
-**Section matching**: exact case-sensitive match on trimmed heading text. First match wins. Section = heading + all following top-level nodes up to (but not including) the next heading of equal-or-higher level.
+# Disambiguate when the same heading text appears at multiple levels
+lybel-docs page apply --page-id <id> \
+  --replace-section "Ops" --at-level 3 --fragment /tmp/lybel-edit/new.md
 
-**When the binary is NOT available**: fall back to `contentFormat: "markdown"` ONLY if the page has no macros to preserve. If it does (TOC, Expand, panel, status), warn the user that the update may destroy structure and ask them to install the CLI first.
+# Add a row to a table inside a section (idempotent with --if-missing)
+lybel-docs page apply --page-id <id> \
+  --table-add-row "Status atual" --row "Acme Corp|🟡 Em avaliação|Origem X|nota" \
+  --if-missing --message "add Acme to status table"
 
-### 4. List — "quais aceleradoras temos" / "lista parceiros"
+# Cells with literal pipes: escape with backslash
+lybel-docs page apply --page-id <id> \
+  --table-add-row "Endpoints" --row "GET /api/v1\|v2|public|200ms"
+# → cells: ["GET /api/v1|v2", "public", "200ms"]
+
+# Remove a row by matching cell text
+lybel-docs page apply --page-id <id> \
+  --table-remove-row "Status atual" --match-cell "Acme Corp"
+
+# Preview without writing
+lybel-docs page apply --page-id <id> \
+  --replace-section "Roadmap" --fragment frag.md --dry-run
+```
+
+For section replacement, include the heading line in the fragment markdown. Section bounds = heading + all following top-level nodes until the next heading of equal-or-higher level (h2 closes at h2 or h1; h3 closes at h3, h2 or h1).
+
+**If `apply` reports "section not found"**, the command also lists the page's current top-level headings so you can correct the spelling or pick a different section. **Never blindly retry** — confirm with the user when the page structure differs from what was expected.
+
+**Two-step fallback** (when `apply` is unavailable but `edit` is):
+1. `lybel-docs page get --page-id <id> --format adf --output /tmp/current.json`
+2. `lybel-docs edit -i /tmp/current.json --replace-section "..." /tmp/frag.md > /tmp/new.json`
+3. `lybel-docs page upload --page-id <id> --adf /tmp/new.json --message "..."`
+
+**MCP fallback** (when no CLI at all):
+1. `getConfluencePage(contentFormat="adf")` → save body to disk
+2. Convert + edit ADF manually (don't do this — install the CLI instead)
+3. `updateConfluencePage(contentFormat="adf", body=...)`
+
+If the page has macros and no CLI is installed, warn the user that updating via `markdown` may destroy structure and ask them to install the CLI first.
+
+### 5. List — "quais aceleradoras temos" / "lista parceiros"
 
 1. Identify the category via the Home.
-2. Use `getPagesInConfluenceSpace` or `getConfluencePageDescendants` on the category parent.
+2. Use the CLI to list direct children:
+   ```
+   lybel-docs page children --page-id <categoryParentId>
+   ```
+   Output: `pageId<TAB>title` per line.
 3. Return as bullets ordered by title or status.
 
-### 5. Status — "qual o status de X"
+**Fallback**: `mcp__atlassian__getPagesInConfluenceSpace` or `getConfluencePageDescendants`.
 
-See Workflow 5 in `reference/workflows.md` (labels + properties). Always cite the date of the last update.
+### 6. Status — "qual o status de X"
 
-### 6. Add relationship — "adiciona advisor/parceiro/investidor X"
+For most "qual o status" questions, the digest is enough — it shows the page's headings, last version number, and which macros are present (status macros show up). For richer status (labels, properties), see Workflow 5 in `reference/workflows.md`. Always cite the date of the last update.
+
+### 7. Add relationship — "adiciona advisor/parceiro/investidor X"
 
 1. Verify in the Home which department/category is correct (advisor ≠ investor ≠ commercial partner).
 2. Confirm template (Advisor Sheet, Investor Sheet, Partner Sheet).
-3. Create under the correct parent. Always confirm location before.
+3. Create under the correct parent (Workflow 3). Always confirm location before.
 
 ## Editorial patterns for Lybel pages
 
@@ -184,12 +299,30 @@ Pages are read by people who weren't in the conversation that generated them. Be
 
 ## Tool preferences
 
-- **MCP Atlassian** is priority for everything (search, read, create, update).
-- **`./bin/lybel-docs adf`** for rich new pages (tables, expand, TOC, status macros) — only if the binary is installed at `./bin/`.
-- **`./bin/lybel-docs edit`** for updating existing pages without destroying macros (append, insert, replace-section, delete-section). See Workflow 3.
-- **Fallback:** `contentFormat: "markdown"` when the binary doesn't exist. Limitation: loses macros, so use only for plain-text pages.
-- **CQL:** prefer `title ~` before `text ~`. **Always** filter by `space = "lybel"`.
+Ordered by preference. Always try the cheapest tool that can answer the question — escalate only when necessary.
+
+| Goal | First choice | Second choice | Last resort |
+|---|---|---|---|
+| Bootstrap (start of session) | `home --refresh` (one GET) | `page digest --page-id 164232` | MCP `getConfluencePage` |
+| "Where do I put X?" / aliases | `home --query "X"` (cached, free) | `home --show` + read | MCP `getConfluencePage` |
+| "What's in page X?" / outline | `page digest` (~500 bytes) | `page get --section "Y" --format text` | `page get --format text` |
+| "Qual o status de X?" | `page digest` (Status field, 0 extra calls) | `page get --section "Status" --format text` | — |
+| "O que diz a seção Y de X?" | `page get --page-id X --section "Y" --format text` | `page get --format text` (whole page) | MCP `getConfluencePage(markdown)` |
+| Find a page | `search "term"` | MCP `searchConfluenceUsingCql` | — |
+| List children of a category | `page children` | MCP `getPagesInConfluenceSpace` | — |
+| Update a page (single section) | `page apply` | `page get` + `edit` + `page upload` | MCP `getConfluencePage(adf)` + manual + `updateConfluencePage(adf)` |
+| Update a page (table row) | `page apply --table-add-row` / `--table-remove-row` | `page get` + `edit --table-*` + `page upload` | — |
+| Create a new page | `page create --markdown` | `adf` to convert + MCP `createConfluencePage(adf)` | MCP `createConfluencePage(markdown)` |
+| Build rich ADF from markdown | `adf` (with `[TOC]`, `:::expand`, `:::warning` extensions) | — | — |
+
+**Why CLI first:** the MCP returns the full ADF body of every page (10–40 KB). The CLI returns digests (~500 bytes), single-section slices (~hundreds of bytes), TSV rows (~150 bytes per result), or one-line status payloads. Across a multi-edit session the difference is usually 10–50× in token cost.
+
+**Status convention:** Lybel page titles often start with a status emoji — 🟢 (active), 🟡 (in-progress), 🟠 (evaluating), 🔴 (blocked), 🔵 (researched), ⚪ (idle), ✅ (done). The CLI's `digest` parses these and exposes `Status: <emoji> <label>` in the text output (and `"status": "<label>"` + `"statusEmoji": "<emoji>"` in `--json`). Use this to answer "qual o status de X?" without any further reads.
+
+**Other notes:**
+- **CQL**: prefer `title ~` before `text ~`. **Always** filter by `space = "lybel"`.
 - **Batch:** multiple reads in parallel within the same tool-call block.
+- **Macro preservation**: `page apply` and `edit` only touch the targeted section; every macro elsewhere on the page is preserved byte-for-byte. Never use `contentFormat: "markdown"` on a page with macros.
 
 ## Report style
 
@@ -208,7 +341,39 @@ Pages are read by people who weren't in the conversation that generated them. Be
 
 - **cloudId:** `ab1dada3-b25e-40ad-9dbc-682caeea8d00`
 - **Space key:** `lybel`
+- **Space ID:** `131352` (used by `page create --space-id`)
 - **Home page ID:** `164232`
 - **Base URL:** `https://lybel.atlassian.net/wiki`
+- **Cloud subdomain:** `lybel` (CLI default — no flag needed)
 
-Don't ask the user — pass these values directly to the MCP tools.
+Don't ask the user — pass these values directly to the MCP tools or CLI flags.
+
+## Home cache lifecycle
+
+The local cache at `~/.cache/lybel-docs/home.json` is shared across all Claude sessions on the same machine. The CLI maintains it for you — see the "Cache lifecycle" table in the bootstrap section above for the full contract.
+
+Quick reference:
+
+- **Reads** (`home --query/--show/--digest`): auto-refresh when stale (>1h) or missing.
+- **Writes** to the Home (`page apply` / `index *` on pageId 164232): auto-refresh the cache after the PUT.
+- **Explicit `home --refresh`**: always fetches, regardless of cache age. Use it when you know another machine just updated and you don't want to wait for the TTL.
+- **Override TTL**: `--max-age 30m` (more aggressive) or `--max-age 6h` (more relaxed) on any read command.
+
+This invariant — **read-only cache, fresh fetch before every write** — is the core safety property. Don't bypass it (e.g. don't try to PUT the cached ADF directly).
+
+## CLI installation check
+
+Before running any `lybel-docs` command, verify the binary exists and credentials are valid. The bootstrap flow is:
+
+```
+lybel-docs --version          # binary present?
+lybel-docs setup --check      # exit 0 = creds valid
+```
+
+Exit codes for `setup --check`:
+- `0` — credentials valid → proceed
+- `1` — no credentials file → run `lybel-docs setup` interactively (or guide the user through Step 5 of `cli/lybel-docs/README.md`)
+- `2` — credentials invalid (token revoked or mistyped) → ask the user to regenerate the token at `https://id.atlassian.com/manage-profile/security/api-tokens` and re-run setup
+- `3` — network error → retry once; if it persists, surface the error to the user and fall back to MCP
+
+If the binary is absent entirely, fall back to MCP for the current request and tell the user how to install: `cli/lybel-docs/README.md` has the one-shot install URL.

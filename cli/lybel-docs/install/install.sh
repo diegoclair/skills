@@ -113,6 +113,36 @@ fi
 cp "$EXTRACTED_BIN" "$BIN_DIR/$BIN_NAME"
 chmod +x "$BIN_DIR/$BIN_NAME"
 
+# ── put on PATH via ~/.local/bin symlink ──────────────────────────────────────
+#
+# Without this step, every Claude tool call has to use an absolute path or a
+# `cd`+relative path, which is friction the LLM has to deal with on every
+# invocation. Symlinking into ~/.local/bin (which is on PATH by default on
+# most modern Linux distros and macOS user setups) lets the agent just call
+# `lybel-docs ...`.
+
+USER_BIN="$HOME/.local/bin"
+SYMLINK="$USER_BIN/$BIN_NAME"
+
+mkdir -p "$USER_BIN"
+# Replace any existing symlink/file at the target so re-runs are idempotent.
+if [ -e "$SYMLINK" ] || [ -L "$SYMLINK" ]; then
+  rm -f "$SYMLINK"
+fi
+if ln -s "$BIN_DIR/$BIN_NAME" "$SYMLINK" 2>/dev/null; then
+  echo "  Symlinked: $SYMLINK -> $BIN_DIR/$BIN_NAME"
+  PATH_LINK_OK=1
+else
+  echo "  warning: could not symlink to $SYMLINK (non-fatal)" >&2
+  PATH_LINK_OK=0
+fi
+
+# Detect whether ~/.local/bin is on PATH so we can warn (or not).
+case ":$PATH:" in
+  *":$USER_BIN:"*) USER_BIN_ON_PATH=1 ;;
+  *)               USER_BIN_ON_PATH=0 ;;
+esac
+
 # ── download SKILL.md ─────────────────────────────────────────────────────────
 
 SKILL_MD_URL="$GITHUB_RAW/cli/lybel-docs/SKILL.md"
@@ -157,6 +187,25 @@ echo "Done. lybel-docs $VERSION installed to:"
 echo "  $BIN_DIR/$BIN_NAME"
 echo ""
 echo "Skill directory: $SKILL_DIR"
-echo ""
-echo "To make the binary available in your shell, add to your profile:"
-echo "  export PATH=\"$BIN_DIR:\$PATH\""
+
+if [ "$PATH_LINK_OK" = "1" ]; then
+  if [ "$USER_BIN_ON_PATH" = "1" ]; then
+    echo ""
+    echo "Ready to use: \`lybel-docs --version\` from any directory."
+  else
+    echo ""
+    echo "Symlink installed at: $SYMLINK"
+    echo ""
+    echo "Note: $USER_BIN is NOT on your \$PATH. To enable the bare \`lybel-docs\`"
+    echo "command, add this to your shell profile (~/.bashrc, ~/.zshrc, ...):"
+    echo "  export PATH=\"$USER_BIN:\$PATH\""
+    echo "Then start a new shell, or for the current shell run:"
+    echo "  export PATH=\"$USER_BIN:\$PATH\""
+  fi
+else
+  echo ""
+  echo "Symlink could not be created. Use the absolute path:"
+  echo "  $BIN_DIR/$BIN_NAME --version"
+  echo "Or add to your shell profile:"
+  echo "  export PATH=\"$BIN_DIR:\$PATH\""
+fi
