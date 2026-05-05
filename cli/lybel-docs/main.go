@@ -749,12 +749,10 @@ func runPageGet(args []string, stdout, stderr io.Writer) (int, error) {
 		}
 	}
 
-	client, ok := buildClient(cloud, email, token, stderr)
-	if !ok {
-		return exitUnknownErr, nil
-	}
-
-	// Map user-facing format to (Confluence API body-format, body field to read).
+	// Validate --format and resolve it to a Confluence API body-format.
+	// This MUST happen before buildClient so a bad --format fails fast with
+	// a clear message even when credentials are missing (matters for tests
+	// and CI where no creds are configured).
 	var bodyFormat, fieldName string
 	switch format {
 	case "adf", "text", "markdown":
@@ -770,6 +768,11 @@ func runPageGet(args []string, stdout, stderr io.Writer) (int, error) {
 	default:
 		fmt.Fprintf(stderr, "unknown format %q — use adf, text, markdown, storage, view, html, or export_view\n", format)
 		return exitInputErr, errInvalidUsage
+	}
+
+	client, ok := buildClient(cloud, email, token, stderr)
+	if !ok {
+		return exitUnknownErr, nil
 	}
 
 	meta, err := client.GetPage(pageID, bodyFormat)
