@@ -77,65 +77,53 @@ try {
 }
 
 Write-Host "  Extracting..."
+$ExtractDir = Join-Path $TmpDir 'extracted'
+New-Item -ItemType Directory -Force -Path $ExtractDir | Out-Null
 try {
-    Expand-Archive -Path $TmpArchive -DestinationPath $TmpDir -Force
+    Expand-Archive -Path $TmpArchive -DestinationPath $ExtractDir -Force
 } catch {
     Write-Error "Extraction failed. Archive at: $TmpArchive`n$($_.Exception.Message)"
     exit 1
 }
 
-# The binary inside the zip is lybel-docs-windows-amd64.exe (or similar).
-$ExtractedBin = Get-ChildItem -Path $TmpDir -Filter 'lybel-docs*.exe' | Select-Object -First 1
-if (-not $ExtractedBin) {
-    Write-Error "Binary not found in archive. Contents: $(Get-ChildItem $TmpDir | Select-Object -ExpandProperty Name)"
+# Layout produced by .github/workflows/release.yml:
+#   bin/lybel-docs.exe
+#   SKILL.md
+#   reference/*.md
+$ExtractedBin = Join-Path $ExtractDir 'bin\lybel-docs.exe'
+if (-not (Test-Path $ExtractedBin)) {
+    # Fallback: recursive search in case the layout ever changes.
+    $found = Get-ChildItem -Path $ExtractDir -Recurse -Filter 'lybel-docs*.exe' | Select-Object -First 1
+    if ($found) { $ExtractedBin = $found.FullName }
+}
+if (-not (Test-Path $ExtractedBin)) {
+    Write-Error "Binary not found in archive. Contents: $(Get-ChildItem $ExtractDir -Recurse | Select-Object -ExpandProperty FullName)"
     exit 1
 }
 
 $Destination = Join-Path $BinDir $BinName
-Copy-Item -Path $ExtractedBin.FullName -Destination $Destination -Force
+Copy-Item -Path $ExtractedBin -Destination $Destination -Force
 
-# ── download SKILL.md + reference/ files ─────────────────────────────────────
-#
-# The skill source-of-truth lives at skills/lybel-docs/ in this repo (NOT
-# cli/lybel-docs/). We fetch SKILL.md plus the reference files so the
-# installed skill is complete on its own. Best-effort: warn but continue
-# on individual file failures.
-
-$SkillBase  = "$GithubRaw/skills/lybel-docs"
+# Install the skill payload (SKILL.md + reference/) bundled in the same
+# archive — no separate raw.githubusercontent.com fetches needed.
 $SkillFilesOk = 0
-$SkillFilesFailed = 0
-
-Write-Host "  Syncing skill files..."
-
-# SKILL.md (main entry)
-try {
-    Invoke-WebRequest -Uri "$SkillBase/SKILL.md" `
-        -OutFile (Join-Path $SkillDir 'SKILL.md') -UseBasicParsing
+$SkillMd = Join-Path $ExtractDir 'SKILL.md'
+if (Test-Path $SkillMd) {
+    Copy-Item -Path $SkillMd -Destination (Join-Path $SkillDir 'SKILL.md') -Force
     $SkillFilesOk++
-} catch {
-    Write-Warning "Could not download SKILL.md (non-fatal): $($_.Exception.Message)"
-    $SkillFilesFailed++
 }
-
-# reference/ files
-$RefDir = Join-Path $SkillDir 'reference'
-New-Item -ItemType Directory -Force -Path $RefDir | Out-Null
-foreach ($ref in @('bootstrap.md', 'aliases.md', 'taxonomy.md', 'templates.md', 'workflows.md')) {
-    try {
-        Invoke-WebRequest -Uri "$SkillBase/reference/$ref" `
-            -OutFile (Join-Path $RefDir $ref) -UseBasicParsing
+$ExtractedRef = Join-Path $ExtractDir 'reference'
+if (Test-Path $ExtractedRef) {
+    $RefDir = Join-Path $SkillDir 'reference'
+    New-Item -ItemType Directory -Force -Path $RefDir | Out-Null
+    Get-ChildItem -Path $ExtractedRef -Filter '*.md' | ForEach-Object {
+        Copy-Item -Path $_.FullName -Destination (Join-Path $RefDir $_.Name) -Force
         $SkillFilesOk++
-    } catch {
-        Write-Warning "Could not download reference/$ref (non-fatal): $($_.Exception.Message)"
-        $SkillFilesFailed++
     }
 }
+Write-Host "  Installed binary + $SkillFilesOk skill file(s) from archive."
 
-if ($SkillFilesFailed -eq 0) {
-    Write-Host "  Synced $SkillFilesOk skill files."
-} else {
-    Write-Host "  Synced $SkillFilesOk skill files; $SkillFilesFailed failed (see warnings above)."
-}
+Remove-Item -Recurse -Force $TmpDir -ErrorAction SilentlyContinue
 
 # ── verify installation ───────────────────────────────────────────────────────
 
@@ -162,10 +150,6 @@ if ($CheckCode -eq 0) {
     Write-Host "  Run ``$Destination setup`` to configure credentials,"
     Write-Host "  or ask Claude to do it for you."
 }
-
-# ── cleanup ───────────────────────────────────────────────────────────────────
-
-Remove-Item -Recurse -Force $TmpDir -ErrorAction SilentlyContinue
 
 # ── add to PATH (current session + persistent User PATH) ─────────────────────
 #
