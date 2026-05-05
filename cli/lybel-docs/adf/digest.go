@@ -13,22 +13,22 @@ import (
 
 // Digest is the slim summary of a page.
 type Digest struct {
-	PageID      string
-	Title       string
-	URL         string
-	Version     int
-	Sections    []SectionSummary
-	TotalWords  int
-	MacroCounts map[string]int // e.g. "expand": 2, "panel-warning": 1, "toc": 1
-	LinksCount  int
+	PageID      string           `json:"pageId"`
+	Title       string           `json:"title"`
+	URL         string           `json:"url"`
+	Version     int              `json:"version"`
+	Sections    []SectionSummary `json:"sections"`
+	TotalWords  int              `json:"totalWords"`
+	MacroCounts map[string]int   `json:"macroCounts"` // e.g. "expand": 2, "panel-warning": 1, "toc": 1
+	LinksCount  int              `json:"linksCount"`
 	// Status is a Lybel convention: page titles often start with a status
 	// emoji (🟢/🟡/🔴/🟠/🔵/⚪/✅) that conveys where the page sits in its
 	// lifecycle. When present, this field carries the parsed semantic label
 	// ("active", "evaluating", "blocked", etc.) so callers can answer
 	// "qual o status de X" without opening the page.
 	// Empty when the title has no recognized status emoji.
-	Status      string `json:",omitempty"`
-	StatusEmoji string `json:",omitempty"`
+	Status      string `json:"status,omitempty"`
+	StatusEmoji string `json:"statusEmoji,omitempty"`
 }
 
 // statusFromTitle scans the leading characters of a title for a Lybel
@@ -71,11 +71,11 @@ func statusFromTitle(title string) (string, string) {
 
 // SectionSummary describes one top-level heading and its body.
 type SectionSummary struct {
-	Level    int      // 1-6
-	Heading  string   // trimmed text
-	Words    int      // word count of body (excluding heading)
-	Macros   []string // macros present inside this section, e.g. ["expand", "panel-warning"]
-	HasTable bool
+	Level    int      `json:"level"`              // 1-6
+	Heading  string   `json:"heading"`            // trimmed text
+	Words    int      `json:"words"`              // word count of body (excluding heading)
+	Macros   []string `json:"macros,omitempty"`   // macros present inside this section, e.g. ["expand", "panel-warning"]
+	HasTable bool     `json:"hasTable,omitempty"`
 }
 
 // BuildDigest analyzes an ADF doc and returns a Digest. PageID/Title/URL/Version
