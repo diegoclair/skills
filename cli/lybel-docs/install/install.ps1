@@ -94,14 +94,47 @@ if (-not $ExtractedBin) {
 $Destination = Join-Path $BinDir $BinName
 Copy-Item -Path $ExtractedBin.FullName -Destination $Destination -Force
 
-# ── download SKILL.md ─────────────────────────────────────────────────────────
+# ── download SKILL.md + reference/ files ─────────────────────────────────────
+#
+# The skill source-of-truth lives at skills/lybel-docs/ in this repo (NOT
+# cli/lybel-docs/). We fetch SKILL.md plus the reference files so the
+# installed skill is complete on its own. Best-effort: warn but continue
+# on individual file failures.
 
-$SkillMdUrl = "$GithubRaw/cli/lybel-docs/SKILL.md"
-Write-Host "  Downloading SKILL.md"
+$SkillBase  = "$GithubRaw/skills/lybel-docs"
+$SkillFilesOk = 0
+$SkillFilesFailed = 0
+
+Write-Host "  Syncing skill files..."
+
+# SKILL.md (main entry)
 try {
-    Invoke-WebRequest -Uri $SkillMdUrl -OutFile (Join-Path $SkillDir 'SKILL.md') -UseBasicParsing
+    Invoke-WebRequest -Uri "$SkillBase/SKILL.md" `
+        -OutFile (Join-Path $SkillDir 'SKILL.md') -UseBasicParsing
+    $SkillFilesOk++
 } catch {
-    Write-Warning "Could not download SKILL.md from $SkillMdUrl (non-fatal)"
+    Write-Warning "Could not download SKILL.md (non-fatal): $($_.Exception.Message)"
+    $SkillFilesFailed++
+}
+
+# reference/ files
+$RefDir = Join-Path $SkillDir 'reference'
+New-Item -ItemType Directory -Force -Path $RefDir | Out-Null
+foreach ($ref in @('bootstrap.md', 'aliases.md', 'taxonomy.md', 'templates.md', 'workflows.md')) {
+    try {
+        Invoke-WebRequest -Uri "$SkillBase/reference/$ref" `
+            -OutFile (Join-Path $RefDir $ref) -UseBasicParsing
+        $SkillFilesOk++
+    } catch {
+        Write-Warning "Could not download reference/$ref (non-fatal): $($_.Exception.Message)"
+        $SkillFilesFailed++
+    }
+}
+
+if ($SkillFilesFailed -eq 0) {
+    Write-Host "  Synced $SkillFilesOk skill files."
+} else {
+    Write-Host "  Synced $SkillFilesOk skill files; $SkillFilesFailed failed (see warnings above)."
 }
 
 # ── verify installation ───────────────────────────────────────────────────────
