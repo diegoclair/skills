@@ -92,6 +92,35 @@ func DeleteSection(doc Node, headingText string) (Node, error) {
 	return out, nil
 }
 
+// ReplaceIntro returns a copy of doc where the "intro" — every top-level node
+// before the first heading — is replaced by fragment. If the document has no
+// leading non-heading content (i.e. the first node IS a heading, or the
+// document is empty), the fragment is prepended instead.
+//
+// Errors:
+//   - if fragment itself begins with a heading node (the intro is, by
+//     definition, pre-heading content; allowing a heading there would silently
+//     create a new first section).
+//
+// An empty fragment is allowed and effectively deletes the intro.
+func ReplaceIntro(doc Node, fragment []Node) (Node, error) {
+	if len(fragment) > 0 && fragment[0].Type == "heading" {
+		return Node{}, fmt.Errorf("intro fragment must not start with a heading")
+	}
+	// Find the index of the first top-level heading.
+	end := 0
+	for i, n := range doc.Content {
+		if n.Type == "heading" {
+			end = i
+			break
+		}
+		end = i + 1
+	}
+	out := doc
+	out.Content = spliceNodes(doc.Content, 0, end, fragment)
+	return out, nil
+}
+
 // SectionContent returns a sub-document containing only the matched section
 // (heading + body until the next heading of equal-or-higher level). Useful
 // for `page get --section` where the caller wants just the slice without

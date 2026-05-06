@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -62,6 +63,7 @@ SETUP FLAGS:
 
 EDIT OPERATIONS (exactly one required):
   --append FRAGMENT.md                    Append the fragment's blocks to the end.
+  --replace-intro FRAGMENT.md             Replace pre-heading content (intro callout).
   --insert-after  "Heading" FRAGMENT.md   Insert blocks right after the section.
   --insert-before "Heading" FRAGMENT.md   Insert blocks right before the section.
   --replace-section "Heading" FRAGMENT.md Replace the section with the fragment.
@@ -103,15 +105,23 @@ PAGE VERBS:
                The full ADF never leaves the binary.
                OPERATION is one of:
                  --append                                          (needs --fragment)
+                 --replace-intro                                   (needs --fragment)
                  --insert-after  "Heading"                         (needs --fragment)
                  --insert-before "Heading"                         (needs --fragment)
                  --replace-section "Heading"                       (needs --fragment)
                  --delete-section  "Heading"
                  --table-add-row    "Heading" --row "a|b|c"        [--after-row "x"] [--if-missing]
                  --table-remove-row "Heading" --match-cell "text"
+                 --multi OPS.json    Apply many ops atomically in 1 GET+PUT.
                In --row, '|' is the cell separator. To include a literal pipe
                character inside a cell, escape it with a backslash, e.g.:
                --row "Foo (A\|B)|123"  → cells: ["Foo (A|B)", "123"].
+  page rewrite --page-id ID --markdown FILE [--strategy headings]
+               [--message MSG] [--dry-run] [--allow-add] [--allow-remove]
+               High-level wrapper: split markdown by headings, match against
+               the page, replace each matched section. Pre-heading content
+               becomes a replace-intro op. Mismatches are warnings unless
+               --allow-add / --allow-remove flip them into ops.
   page children  --page-id ID [--cloud SUBDOMAIN]
                List direct children of a page. Output: TSV (id, title) per line.
                (Old name 'list-children' still works as alias.)
@@ -330,6 +340,7 @@ const (
 	opDeleteSection
 	opTableAddRow
 	opTableRemoveRow
+	opReplaceIntro
 )
 
 // runEdit parses edit-subcommand flags and applies one section-level or
@@ -427,6 +438,17 @@ func runEdit(args []string, stdin io.Reader, stdout, stderr io.Writer) (int, err
 			}
 			// Fragment may follow immediately or be a trailing positional.
 			// Peek at next arg: if it looks like a file (not a flag), grab it.
+			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+				fragmentPath = args[i+1]
+				i++
+			}
+
+		case "--replace-intro":
+			if err := setOp(opReplaceIntro); err != nil {
+				fmt.Fprintln(stderr, err)
+				return exitInputErr, errInvalidUsage
+			}
+			// Fragment may follow immediately or be a trailing positional.
 			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
 				fragmentPath = args[i+1]
 				i++
@@ -560,6 +582,8 @@ func runEdit(args []string, stdin io.Reader, stdout, stderr io.Writer) (int, err
 	switch op {
 	case opAppend:
 		result = adf.Append(doc, fragment)
+	case opReplaceIntro:
+		result, err = adf.ReplaceIntro(doc, fragment)
 	case opInsertAfter:
 		result, err = adf.InsertAfterAtLevel(doc, heading, atLevel, fragment)
 	case opInsertBefore:
@@ -609,9 +633,11 @@ func runPage(args []string, stdin io.Reader, stdout, stderr io.Writer) (int, err
 		return runPageDigest(args[1:], stdout, stderr)
 	case "apply":
 		return runPageApply(args[1:], stdout, stderr)
+	case "rewrite":
+		return runPageRewrite(args[1:], stdout, stderr)
 	default:
 		fmt.Fprintln(stderr, "page: unknown verb:", args[0])
-		fmt.Fprintln(stderr, "  valid verbs: get, upload, create, children, digest, apply")
+		fmt.Fprintln(stderr, "  valid verbs: get, upload, create, children, digest, apply, rewrite")
 		return exitInputErr, errInvalidUsage
 	}
 }
@@ -1185,6 +1211,222 @@ func runPageDigest(args []string, stdout, stderr io.Writer) (int, error) {
 	return exitOK, nil
 }
 
+// multiOp is a single batch operation read from --multi JSON or built
+// internally by `page rewrite`. The shape mirrors the single-op CLI flags so
+// users who already know `page apply` can compose multi files easily.
+type multiOp struct {
+	Kind      string `json:"kind"`
+	Heading   string `json:"heading,omitempty"`
+	AtLevel   int    `json:"atLevel,omitempty"`
+	Fragment  string `json:"fragment,omitempty"`
+	Row       string `json:"row,omitempty"`
+	AfterRow  string `json:"afterRow,omitempty"`
+	MatchCell string `json:"matchCell,omitempty"`
+	IfMissing bool   `json:"ifMissing,omitempty"`
+}
+
+// multiSpec is the top-level schema for an --multi JSON file.
+type multiSpec struct {
+	Message    string    `json:"message,omitempty"`
+	Operations []multiOp `json:"operations"`
+}
+
+// applyOp runs a single batch op against a doc and returns the mutated doc.
+// The returned (skipped, error): skipped is true for benign no-ops (e.g.
+// table-add-row with --if-missing where the row already exists). error is
+// non-nil for hard failures that must abort the batch.
+func applyOp(doc adf.Node, op multiOp, fragment []adf.Node) (adf.Node, bool, error) {
+	switch op.Kind {
+	case "append":
+		return adf.Append(doc, fragment), false, nil
+	case "replace-intro":
+		out, err := adf.ReplaceIntro(doc, fragment)
+		return out, false, err
+	case "insert-after":
+		out, err := adf.InsertAfterAtLevel(doc, op.Heading, op.AtLevel, fragment)
+		return out, false, err
+	case "insert-before":
+		out, err := adf.InsertBeforeAtLevel(doc, op.Heading, op.AtLevel, fragment)
+		return out, false, err
+	case "replace-section":
+		out, err := adf.ReplaceSectionAtLevel(doc, op.Heading, op.AtLevel, fragment)
+		return out, false, err
+	case "delete-section":
+		out, err := adf.DeleteSectionAtLevel(doc, op.Heading, op.AtLevel)
+		return out, false, err
+	case "table-add-row":
+		out, existed, err := adf.TableAddRow(doc, op.Heading, op.AtLevel, op.Row, op.AfterRow, op.IfMissing)
+		if existed {
+			return doc, true, nil
+		}
+		return out, false, err
+	case "table-remove-row":
+		out, err := adf.TableRemoveRow(doc, op.Heading, op.AtLevel, op.MatchCell)
+		return out, false, err
+	default:
+		return doc, false, fmt.Errorf("unknown op kind %q", op.Kind)
+	}
+}
+
+// loadMultiFragment loads the markdown fragment file for an op, or returns
+// nil if the op kind doesn't take a fragment.
+func loadMultiFragment(op multiOp) ([]adf.Node, error) {
+	needsFragment := false
+	switch op.Kind {
+	case "append", "replace-intro", "insert-after", "insert-before", "replace-section":
+		needsFragment = true
+	}
+	if !needsFragment {
+		return nil, nil
+	}
+	if op.Fragment == "" {
+		return nil, fmt.Errorf("op kind %q requires a fragment file", op.Kind)
+	}
+	src, err := os.ReadFile(op.Fragment)
+	if err != nil {
+		return nil, fmt.Errorf("reading fragment %s: %w", op.Fragment, err)
+	}
+	nodes, err := adf.ConvertFragment(src)
+	if err != nil {
+		return nil, fmt.Errorf("parse fragment %s: %w", op.Fragment, err)
+	}
+	return nodes, nil
+}
+
+// validateMultiOp returns an error if required per-kind fields are missing.
+func validateMultiOp(op multiOp) error {
+	switch op.Kind {
+	case "append":
+		if op.Fragment == "" {
+			return fmt.Errorf("append requires fragment")
+		}
+	case "replace-intro":
+		if op.Fragment == "" {
+			return fmt.Errorf("replace-intro requires fragment")
+		}
+	case "insert-after", "insert-before", "replace-section":
+		if op.Heading == "" {
+			return fmt.Errorf("%s requires heading", op.Kind)
+		}
+		if op.Fragment == "" {
+			return fmt.Errorf("%s requires fragment", op.Kind)
+		}
+	case "delete-section":
+		if op.Heading == "" {
+			return fmt.Errorf("delete-section requires heading")
+		}
+	case "table-add-row":
+		if op.Heading == "" {
+			return fmt.Errorf("table-add-row requires heading")
+		}
+		if op.Row == "" {
+			return fmt.Errorf("table-add-row requires row")
+		}
+	case "table-remove-row":
+		if op.Heading == "" {
+			return fmt.Errorf("table-remove-row requires heading")
+		}
+		if op.MatchCell == "" {
+			return fmt.Errorf("table-remove-row requires matchCell")
+		}
+	default:
+		return fmt.Errorf("unknown op kind %q", op.Kind)
+	}
+	return nil
+}
+
+// opSummary returns a short human-readable description for a multi op (used
+// in --dry-run and rewrite output).
+func opSummary(op multiOp) string {
+	switch op.Kind {
+	case "append":
+		return "append fragment to end"
+	case "replace-intro":
+		return "replace intro (pre-heading content)"
+	case "insert-after":
+		return fmt.Sprintf("insert after %q", op.Heading)
+	case "insert-before":
+		return fmt.Sprintf("insert before %q", op.Heading)
+	case "replace-section":
+		return fmt.Sprintf("replace section %q", op.Heading)
+	case "delete-section":
+		return fmt.Sprintf("delete section %q", op.Heading)
+	case "table-add-row":
+		return fmt.Sprintf("add row to table in %q", op.Heading)
+	case "table-remove-row":
+		return fmt.Sprintf("remove row from table in %q", op.Heading)
+	default:
+		return op.Kind
+	}
+}
+
+// runMultiApply runs a batch of ops atomically against a page: GET → apply
+// all in-memory → PUT. Returns (fromVersion, toVersion, title, applied, error).
+//
+// On 409 conflict it refetches and replays the WHOLE batch once (matching the
+// single-op retry policy). If any op fails the batch is aborted (no PUT).
+//
+// fragments is parallel to ops and pre-loaded; pass nil entries for ops that
+// don't take a fragment. dryRun skips the PUT.
+func runMultiApply(client *adf.ConfluenceClient, pageID, message string, ops []multiOp, fragments [][]adf.Node, dryRun bool, stdout, stderr io.Writer) (fromVersion, toVersion int, title string, opsApplied int, err error) {
+	for attempt := 0; attempt < 2; attempt++ {
+		meta, gErr := client.GetPage(pageID, "atlas_doc_format")
+		if gErr != nil {
+			return 0, 0, "", 0, fmt.Errorf("fetching page: %w", gErr)
+		}
+		if meta.Body.AtlasDocFormat.Value == "" {
+			return 0, 0, "", 0, fmt.Errorf("page has no ADF body")
+		}
+		doc, dErr := adf.UnmarshalDoc([]byte(meta.Body.AtlasDocFormat.Value))
+		if dErr != nil {
+			return 0, 0, "", 0, fmt.Errorf("parse ADF: %w", dErr)
+		}
+
+		// Apply each op sequentially in memory.
+		current := doc
+		applied := 0
+		for i, op := range ops {
+			next, skipped, opErr := applyOp(current, op, fragments[i])
+			if opErr != nil {
+				// Abort: report which op (1-indexed) failed.
+				fmt.Fprintf(stderr, "op %d (%s) failed: %v\n", i+1, op.Kind, opErr)
+				if op.Kind != "table-add-row" && op.Kind != "table-remove-row" {
+					fmt.Fprintln(stderr, "current top-level sections:")
+					for _, n := range current.Content {
+						if n.Type == "heading" {
+							fmt.Fprintf(stderr, "  - h%d %q\n", headingLevelFromNode(n), strings.TrimSpace(allText(n)))
+						}
+					}
+				}
+				return meta.Version.Number, 0, meta.Title, 0, fmt.Errorf("op %d (%s): %w", i+1, op.Kind, opErr)
+			}
+			current = next
+			if skipped {
+				fmt.Fprintf(stderr, "notice: op %d (%s in %q) — skipped (already exists)\n", i+1, op.Kind, op.Heading)
+			} else {
+				applied++
+			}
+		}
+
+		title = meta.Title
+		fromVersion = meta.Version.Number
+		toVersion = meta.Version.Number + 1
+		opsApplied = applied
+
+		uErr := client.UpdatePage(pageID, meta.Title, toVersion, current, message, dryRun, stderr)
+		if uErr == nil {
+			return fromVersion, toVersion, title, opsApplied, nil
+		}
+		if adf.IsConflict(uErr) && attempt == 0 {
+			fmt.Fprintln(stderr, "notice: page version changed during apply — refetching and retrying once")
+			continue
+		}
+		return fromVersion, 0, title, 0, fmt.Errorf("update failed: %w", uErr)
+	}
+	// Unreachable.
+	return 0, 0, "", 0, fmt.Errorf("retry exhausted")
+}
+
 // runPageApply atomically applies a section-level edit to a Confluence page:
 // GET (fresh ADF) → edit (in memory) → PUT. On 409 conflict (someone else
 // updated the page in the meantime), it refetches and retries once. The full
@@ -1206,6 +1448,7 @@ func runPageApply(args []string, stdout, stderr io.Writer) (int, error) {
 		afterRow     string
 		matchCell    string
 		ifMissing    bool
+		multiPath    string
 	)
 
 	setOp := func(newOp editOp) error {
@@ -1258,6 +1501,13 @@ func runPageApply(args []string, stdout, stderr io.Writer) (int, error) {
 			}
 			fragmentPath = remaining[i+1]
 			i++
+		case "--multi":
+			if i+1 >= len(remaining) {
+				fmt.Fprintln(stderr, "--multi requires a JSON file path")
+				return exitInputErr, errInvalidUsage
+			}
+			multiPath = remaining[i+1]
+			i++
 		case "--dry-run":
 			dryRun = true
 		case "--row":
@@ -1285,6 +1535,11 @@ func runPageApply(args []string, stdout, stderr io.Writer) (int, error) {
 			ifMissing = true
 		case "--append":
 			if err := setOp(opAppend); err != nil {
+				fmt.Fprintln(stderr, err)
+				return exitInputErr, errInvalidUsage
+			}
+		case "--replace-intro":
+			if err := setOp(opReplaceIntro); err != nil {
 				fmt.Fprintln(stderr, err)
 				return exitInputErr, errInvalidUsage
 			}
@@ -1351,14 +1606,24 @@ func runPageApply(args []string, stdout, stderr io.Writer) (int, error) {
 		fmt.Fprintln(stderr, "page apply: --page-id is required")
 		return exitInputErr, errInvalidUsage
 	}
+
+	// --multi is mutually exclusive with single-op flags.
+	if multiPath != "" {
+		if op != opNone {
+			fmt.Fprintln(stderr, "page apply: --multi is mutually exclusive with single-op flags")
+			return exitInputErr, errInvalidUsage
+		}
+		return runPageApplyMulti(pageID, multiPath, message, dryRun, cloud, email, token, stdout, stderr)
+	}
+
 	if op == opNone {
 		fmt.Fprintln(stderr, "page apply: no operation specified")
-		fmt.Fprintln(stderr, "  use one of: --append, --insert-after, --insert-before, --replace-section, --delete-section, --table-add-row, --table-remove-row")
+		fmt.Fprintln(stderr, "  use one of: --append, --insert-after, --insert-before, --replace-section, --delete-section, --replace-intro, --table-add-row, --table-remove-row, --multi")
 		return exitInputErr, errInvalidUsage
 	}
 	// Operation-specific validation:
 	switch op {
-	case opAppend, opInsertAfter, opInsertBefore, opReplaceSection:
+	case opAppend, opInsertAfter, opInsertBefore, opReplaceSection, opReplaceIntro:
 		if fragmentPath == "" {
 			fmt.Fprintln(stderr, "page apply: --fragment FILE is required for this operation")
 			return exitInputErr, errInvalidUsage
@@ -1423,6 +1688,8 @@ func runPageApply(args []string, stdout, stderr io.Writer) (int, error) {
 		switch op {
 		case opAppend:
 			result = adf.Append(doc, fragment)
+		case opReplaceIntro:
+			result, opErr = adf.ReplaceIntro(doc, fragment)
 		case opInsertAfter:
 			result, opErr = adf.InsertAfterAtLevel(doc, heading, atLevel, fragment)
 		case opInsertBefore:
@@ -1489,6 +1756,488 @@ func runPageApply(args []string, stdout, stderr io.Writer) (int, error) {
 	fmt.Fprintf(stdout, `{"status":"ok","pageId":%q,"title":%q,"fromVersion":%d,"toVersion":%d,"url":%q}`+"\n",
 		pageID, lastTitle, lastFromVersion, lastToVersion, url)
 	return exitOK, nil
+}
+
+// runPageApplyMulti loads a multi-op JSON file and applies it atomically.
+// Called from runPageApply when --multi is set.
+func runPageApplyMulti(pageID, multiPath, message string, dryRun bool, cloud, email, token string, stdout, stderr io.Writer) (int, error) {
+	specBytes, err := os.ReadFile(multiPath)
+	if err != nil {
+		fmt.Fprintln(stderr, "reading multi spec:", err)
+		return exitInputErr, err
+	}
+	var spec multiSpec
+	if err := json.Unmarshal(specBytes, &spec); err != nil {
+		fmt.Fprintln(stderr, "parse multi spec:", err)
+		return exitParseErr, err
+	}
+	if len(spec.Operations) == 0 {
+		fmt.Fprintln(stderr, "page apply --multi: spec has no operations")
+		return exitInputErr, errInvalidUsage
+	}
+	// CLI --message wins over spec.Message (per brief).
+	if message == "" && spec.Message != "" {
+		message = spec.Message
+	}
+
+	// Validate every op + load fragments up front.
+	fragments := make([][]adf.Node, len(spec.Operations))
+	for i, op := range spec.Operations {
+		if err := validateMultiOp(op); err != nil {
+			fmt.Fprintf(stderr, "op %d (%s): %v\n", i+1, op.Kind, err)
+			return exitInputErr, errInvalidUsage
+		}
+		frag, err := loadMultiFragment(op)
+		if err != nil {
+			fmt.Fprintf(stderr, "op %d: %v\n", i+1, err)
+			return exitInputErr, err
+		}
+		fragments[i] = frag
+	}
+
+	client, ok := buildClient(cloud, email, token, stderr)
+	if !ok {
+		return exitUnknownErr, nil
+	}
+
+	if dryRun {
+		// Dry-run: still GET, apply in memory, print summary, but skip PUT.
+		fromV, toV, title, applied, err := runMultiApply(client, pageID, message, spec.Operations, fragments, true, stdout, stderr)
+		if err != nil {
+			return exitInputErr, err
+		}
+		fmt.Fprintf(stderr, "dry-run: would apply %d ops to %q (v%d → v%d)\n",
+			applied, title, fromV, toV)
+		for i, op := range spec.Operations {
+			fmt.Fprintf(stderr, "  %d. %s\n", i+1, opSummary(op))
+		}
+		return exitOK, nil
+	}
+
+	fromV, toV, title, applied, err := runMultiApply(client, pageID, message, spec.Operations, fragments, false, stdout, stderr)
+	if err != nil {
+		return exitInputErr, err
+	}
+	refreshHomeCacheAfterWrite(pageID, client, stderr)
+	url := fmt.Sprintf("%s/spaces/%s/pages/%s", client.BaseURL(), defaultCloud, pageID)
+	fmt.Fprintf(stdout, `{"status":"ok","pageId":%q,"title":%q,"fromVersion":%d,"toVersion":%d,"opsApplied":%d,"url":%q}`+"\n",
+		pageID, title, fromV, toV, applied, url)
+	return exitOK, nil
+}
+
+// runPageRewrite splits a markdown file into sections by heading and matches
+// against the current page's headings. For each match it emits a
+// replace-section op; pre-heading content emits replace-intro. Mismatches
+// (heading in markdown but not in page, or vice versa) are reported as
+// warnings; --allow-add / --allow-remove flip them into actual ops.
+//
+// Then dispatches through the same multi-op atomic apply path.
+func runPageRewrite(args []string, stdout, stderr io.Writer) (int, error) {
+	var (
+		pageID       string
+		markdownFile string
+		strategy     = "headings"
+		message      string
+		dryRun       bool
+		allowAdd     bool
+		allowRemove  bool
+	)
+
+	remaining, cloud, email, token, err := parseCommonPageFlags(args)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return exitInputErr, errInvalidUsage
+	}
+
+	for i := 0; i < len(remaining); i++ {
+		a := remaining[i]
+		switch a {
+		case "--page-id":
+			if i+1 >= len(remaining) {
+				fmt.Fprintln(stderr, "--page-id requires a value")
+				return exitInputErr, errInvalidUsage
+			}
+			pageID = remaining[i+1]
+			i++
+		case "--markdown":
+			if i+1 >= len(remaining) {
+				fmt.Fprintln(stderr, "--markdown requires a file path")
+				return exitInputErr, errInvalidUsage
+			}
+			markdownFile = remaining[i+1]
+			i++
+		case "--strategy":
+			if i+1 >= len(remaining) {
+				fmt.Fprintln(stderr, "--strategy requires a value")
+				return exitInputErr, errInvalidUsage
+			}
+			strategy = remaining[i+1]
+			i++
+		case "--message":
+			if i+1 >= len(remaining) {
+				fmt.Fprintln(stderr, "--message requires a value")
+				return exitInputErr, errInvalidUsage
+			}
+			message = remaining[i+1]
+			i++
+		case "--dry-run":
+			dryRun = true
+		case "--allow-add":
+			allowAdd = true
+		case "--allow-remove":
+			allowRemove = true
+		case "-h", "--help":
+			fmt.Fprintln(stdout, "page rewrite — replace matched sections of a page from a markdown file.")
+			fmt.Fprintln(stdout, "")
+			fmt.Fprintln(stdout, "  --page-id ID           target page (required)")
+			fmt.Fprintln(stdout, "  --markdown FILE        new content (required)")
+			fmt.Fprintln(stdout, "  --strategy headings    (default; only value)")
+			fmt.Fprintln(stdout, "  --message MSG          version comment")
+			fmt.Fprintln(stdout, "  --dry-run              print proposed ops without writing")
+			fmt.Fprintln(stdout, "  --allow-add            also append headings present in markdown but not in page")
+			fmt.Fprintln(stdout, "  --allow-remove         also delete headings present in page but not in markdown")
+			return exitOK, nil
+		default:
+			fmt.Fprintln(stderr, "unknown flag:", a)
+			return exitInputErr, errInvalidUsage
+		}
+	}
+
+	if pageID == "" {
+		fmt.Fprintln(stderr, "page rewrite: --page-id is required")
+		return exitInputErr, errInvalidUsage
+	}
+	if markdownFile == "" {
+		fmt.Fprintln(stderr, "page rewrite: --markdown FILE is required")
+		return exitInputErr, errInvalidUsage
+	}
+	if strategy != "headings" {
+		fmt.Fprintf(stderr, "page rewrite: unknown strategy %q (only 'headings' supported)\n", strategy)
+		return exitInputErr, errInvalidUsage
+	}
+
+	mdBytes, err := os.ReadFile(markdownFile)
+	if err != nil {
+		fmt.Fprintln(stderr, "reading markdown:", err)
+		return exitInputErr, err
+	}
+
+	// Split markdown by headings; produce a list of (level, title, body) plus
+	// a pre-heading intro slice. Body excludes the heading line itself.
+	mdIntro, mdSections, err := splitMarkdownByHeadings(mdBytes)
+	if err != nil {
+		fmt.Fprintln(stderr, "split markdown:", err)
+		return exitParseErr, err
+	}
+
+	client, ok := buildClient(cloud, email, token, stderr)
+	if !ok {
+		return exitUnknownErr, nil
+	}
+
+	// Fetch current page & its top-level headings.
+	meta, err := client.GetPage(pageID, "atlas_doc_format")
+	if err != nil {
+		fmt.Fprintln(stderr, "fetching page:", err)
+		return exitUnknownErr, err
+	}
+	if meta.Body.AtlasDocFormat.Value == "" {
+		fmt.Fprintln(stderr, "page has no ADF body")
+		return exitUnknownErr, fmt.Errorf("empty ADF body")
+	}
+	doc, err := adf.UnmarshalDoc([]byte(meta.Body.AtlasDocFormat.Value))
+	if err != nil {
+		fmt.Fprintln(stderr, "parse ADF:", err)
+		return exitParseErr, err
+	}
+
+	// Collect (level, title) for each top-level heading in the page.
+	type pageHeading struct {
+		level int
+		title string
+	}
+	var pageHeadings []pageHeading
+	for _, n := range doc.Content {
+		if n.Type == "heading" {
+			pageHeadings = append(pageHeadings, pageHeading{
+				level: headingLevelFromNode(n),
+				title: strings.TrimSpace(allText(n)),
+			})
+		}
+	}
+	pageHeadingKey := func(h pageHeading) string {
+		return fmt.Sprintf("%d:%s", h.level, h.title)
+	}
+	mdHeadingKey := func(level int, title string) string {
+		return fmt.Sprintf("%d:%s", level, title)
+	}
+	pageHeadingSet := make(map[string]bool)
+	for _, h := range pageHeadings {
+		pageHeadingSet[pageHeadingKey(h)] = true
+	}
+	mdHeadingSet := make(map[string]bool)
+	for _, s := range mdSections {
+		mdHeadingSet[mdHeadingKey(s.level, s.title)] = true
+	}
+
+	// Build temp dir for fragment files.
+	tmpDir, err := os.MkdirTemp("", "lybel-rewrite-")
+	if err != nil {
+		fmt.Fprintln(stderr, "tempdir:", err)
+		return exitUnknownErr, err
+	}
+	defer os.RemoveAll(tmpDir)
+
+	writeFrag := func(name, content string) (string, error) {
+		path := filepath.Join(tmpDir, name)
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			return "", err
+		}
+		return path, nil
+	}
+
+	// Build ops + reporting lines.
+	var ops []multiOp
+	var report []rewriteReportLine
+	wouldAdd, wouldRemove := 0, 0
+
+	// 1. Intro (markdown pre-heading content)
+	if strings.TrimSpace(mdIntro) != "" {
+		path, err := writeFrag("intro.md", mdIntro)
+		if err != nil {
+			fmt.Fprintln(stderr, "writing intro frag:", err)
+			return exitUnknownErr, err
+		}
+		ops = append(ops, multiOp{Kind: "replace-intro", Fragment: path})
+		report = append(report, rewriteReportLine{"✓", "replaced intro"})
+	}
+
+	// 2. Walk markdown sections in order. For each:
+	//    - if matched in page (level+title): emit replace-section op
+	//    - if not: would-add → optionally append op
+	for i, s := range mdSections {
+		key := mdHeadingKey(s.level, s.title)
+		body := s.fullText() // includes heading line + body
+		fragName := fmt.Sprintf("section-%d.md", i)
+		path, err := writeFrag(fragName, body)
+		if err != nil {
+			fmt.Fprintln(stderr, "writing section frag:", err)
+			return exitUnknownErr, err
+		}
+		if pageHeadingSet[key] {
+			ops = append(ops, multiOp{
+				Kind:     "replace-section",
+				Heading:  s.title,
+				AtLevel:  s.level,
+				Fragment: path,
+			})
+			report = append(report, rewriteReportLine{"✓",
+				fmt.Sprintf("replaced section %q (h%d)", s.title, s.level)})
+		} else {
+			if allowAdd {
+				ops = append(ops, multiOp{Kind: "append", Fragment: path})
+				report = append(report, rewriteReportLine{"+",
+					fmt.Sprintf("added section %q (h%d) at end", s.title, s.level)})
+			} else {
+				report = append(report, rewriteReportLine{"⚠",
+					fmt.Sprintf("would add: %q (h%d) [pass --allow-add to apply]", s.title, s.level)})
+				wouldAdd++
+			}
+		}
+	}
+
+	// 3. Headings in page but NOT in markdown → would-remove (or remove if flag).
+	for _, h := range pageHeadings {
+		key := pageHeadingKey(h)
+		if mdHeadingSet[key] {
+			continue
+		}
+		if allowRemove {
+			ops = append(ops, multiOp{
+				Kind:    "delete-section",
+				Heading: h.title,
+				AtLevel: h.level,
+			})
+			report = append(report, rewriteReportLine{"-",
+				fmt.Sprintf("removed section %q (h%d)", h.title, h.level)})
+		} else {
+			report = append(report, rewriteReportLine{"⚠",
+				fmt.Sprintf("would remove: %q (h%d) [pass --allow-remove to apply]", h.title, h.level)})
+			wouldRemove++
+		}
+	}
+
+	if len(ops) == 0 {
+		fmt.Fprintln(stderr, "page rewrite: no matching headings — nothing to do")
+		for _, r := range report {
+			fmt.Fprintf(stderr, "  %s %s\n", r.mark, r.text)
+		}
+		return exitOK, nil
+	}
+
+	// Pre-load fragments for the multi-apply.
+	fragments := make([][]adf.Node, len(ops))
+	for i, op := range ops {
+		if err := validateMultiOp(op); err != nil {
+			fmt.Fprintf(stderr, "internal: built invalid op %d (%s): %v\n", i+1, op.Kind, err)
+			return exitUnknownErr, err
+		}
+		frag, err := loadMultiFragment(op)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return exitInputErr, err
+		}
+		fragments[i] = frag
+	}
+
+	if dryRun {
+		fmt.Fprintf(stdout, "Rewriting page %s (v%d → v%d) [dry-run]\n",
+			pageID, meta.Version.Number, meta.Version.Number+1)
+		for _, r := range report {
+			fmt.Fprintf(stdout, "  %s %s\n", r.mark, r.text)
+		}
+		fmt.Fprintf(stdout, "%d sections replaced, %d add skipped, %d remove skipped\n",
+			countReports(report, "✓"), wouldAdd, wouldRemove)
+		return exitOK, nil
+	}
+
+	fromV, toV, title, applied, err := runMultiApply(client, pageID, message, ops, fragments, false, stdout, stderr)
+	if err != nil {
+		return exitInputErr, err
+	}
+	refreshHomeCacheAfterWrite(pageID, client, stderr)
+
+	fmt.Fprintf(stdout, "Rewriting page %s (v%d → v%d)\n", pageID, fromV, toV)
+	for _, r := range report {
+		fmt.Fprintf(stdout, "  %s %s\n", r.mark, r.text)
+	}
+	fmt.Fprintf(stdout, "%d sections replaced, %d add skipped, %d remove skipped\n",
+		countReports(report, "✓"), wouldAdd, wouldRemove)
+	url := fmt.Sprintf("%s/spaces/%s/pages/%s", client.BaseURL(), defaultCloud, pageID)
+	fmt.Fprintf(stdout, "URL: %s\n", url)
+	_ = title
+	_ = applied
+	return exitOK, nil
+}
+
+// rewriteReportLine is a single line of human output for `page rewrite`.
+type rewriteReportLine struct {
+	mark string // "✓", "+", "-", "⚠"
+	text string
+}
+
+// countReports counts report lines whose mark equals m.
+func countReports(rs []rewriteReportLine, m string) int {
+	n := 0
+	for _, r := range rs {
+		if r.mark == m {
+			n++
+		}
+	}
+	return n
+}
+
+// mdSection is a markdown section parsed by splitMarkdownByHeadings.
+type mdSection struct {
+	level    int    // 1..6
+	title    string // heading text (trimmed)
+	headLine string // the original heading line, e.g. "## Foo"
+	body     string // body text after the heading, may contain blank lines
+}
+
+// fullText returns the section serialized back to markdown including its
+// heading line, suitable for writing as a fragment file.
+func (s mdSection) fullText() string {
+	if s.body == "" {
+		return s.headLine + "\n"
+	}
+	return s.headLine + "\n" + s.body
+}
+
+// splitMarkdownByHeadings parses raw markdown bytes and returns:
+//   - intro: text before the first heading line (may be empty)
+//   - sections: one entry per heading, in document order
+//
+// Headings are detected as ATX-style lines beginning with 1-6 '#' chars
+// followed by a space. Setext headings (=== / ---) are NOT supported.
+func splitMarkdownByHeadings(src []byte) (intro string, sections []mdSection, err error) {
+	lines := strings.Split(string(src), "\n")
+	type pending struct {
+		level    int
+		title    string
+		headLine string
+		bodyBuf  []string
+	}
+	var introBuf []string
+	var cur *pending
+	flush := func() {
+		if cur == nil {
+			return
+		}
+		body := strings.Join(cur.bodyBuf, "\n")
+		// Trim trailing blank lines from body so fragments are tidy, but
+		// preserve a trailing newline.
+		body = strings.TrimRight(body, "\n") + "\n"
+		if strings.TrimSpace(body) == "" {
+			body = ""
+		}
+		sections = append(sections, mdSection{
+			level:    cur.level,
+			title:    cur.title,
+			headLine: cur.headLine,
+			body:     body,
+		})
+		cur = nil
+	}
+	for _, line := range lines {
+		level, title, ok := parseATXHeading(line)
+		if ok {
+			flush()
+			cur = &pending{
+				level:    level,
+				title:    title,
+				headLine: line,
+			}
+			continue
+		}
+		if cur == nil {
+			introBuf = append(introBuf, line)
+		} else {
+			cur.bodyBuf = append(cur.bodyBuf, line)
+		}
+	}
+	flush()
+	intro = strings.Join(introBuf, "\n")
+	intro = strings.TrimRight(intro, "\n")
+	if strings.TrimSpace(intro) != "" {
+		intro += "\n"
+	} else {
+		intro = ""
+	}
+	return intro, sections, nil
+}
+
+// parseATXHeading returns (level, trimmedTitle, true) if line is an ATX
+// heading like "## Foo". Otherwise returns (0, "", false).
+func parseATXHeading(line string) (int, string, bool) {
+	i := 0
+	for i < len(line) && line[i] == '#' {
+		i++
+	}
+	if i == 0 || i > 6 {
+		return 0, "", false
+	}
+	if i >= len(line) || line[i] != ' ' {
+		return 0, "", false
+	}
+	title := strings.TrimSpace(line[i+1:])
+	// Strip optional trailing # tokens (e.g. "## Foo ##").
+	title = strings.TrimRight(title, "#")
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return 0, "", false
+	}
+	return i, title, true
 }
 
 // headingLevelFromNode is a thin wrapper to expose heading level for the

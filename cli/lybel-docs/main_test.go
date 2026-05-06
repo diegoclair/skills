@@ -566,3 +566,275 @@ func TestIndexRemove_MissingPageID(t *testing.T) {
 		t.Errorf("expected --page-id mention in error: %s", errOut)
 	}
 }
+
+// ── replace-intro (edit) ──────────────────────────────────────────────────────
+
+func TestEdit_ReplaceIntro_PrependsWhenNoLeadingContent(t *testing.T) {
+	dir := t.TempDir()
+	docPath := writeTestADF(t, dir) // starts with h2 Alpha
+	fragPath := writeFragmentMD(t, dir, "Intro callout text.")
+
+	out, _, code := runCLI(t, "edit", "--input", docPath, "--replace-intro", fragPath)
+	if code != 0 {
+		t.Fatalf("want exit 0, got %d", code)
+	}
+	// goldmark may split text across multiple nodes — search for any chunk.
+	if !strings.Contains(out, "Intro callout") {
+		t.Errorf("expected intro text in output: %s", out)
+	}
+	// Original headings should remain.
+	if !strings.Contains(out, "Alpha") || !strings.Contains(out, "Bravo") {
+		t.Errorf("original headings missing: %s", out)
+	}
+}
+
+func TestEdit_ReplaceIntro_ReplacesExistingIntro(t *testing.T) {
+	dir := t.TempDir()
+	// Build a doc that has an intro paragraph BEFORE the first heading.
+	doc := `{"type":"doc","attrs":{"version":1},"content":[` +
+		`{"type":"paragraph","content":[{"type":"text","text":"old intro"}]},` +
+		`{"type":"heading","attrs":{"level":2},"content":[{"type":"text","text":"Alpha"}]},` +
+		`{"type":"paragraph","content":[{"type":"text","text":"body A"}]}` +
+		`]}`
+	docPath := filepath.Join(dir, "doc.json")
+	os.WriteFile(docPath, []byte(doc), 0644)
+	fragPath := writeFragmentMD(t, dir, "fresh intro")
+
+	out, _, code := runCLI(t, "edit", "--input", docPath, "--replace-intro", fragPath)
+	if code != 0 {
+		t.Fatalf("want exit 0, got %d", code)
+	}
+	if strings.Contains(out, "old intro") {
+		t.Errorf("old intro should be gone: %s", out)
+	}
+	// goldmark may split text — match any chunk.
+	if !strings.Contains(out, "fresh") {
+		t.Errorf("expected fresh intro text in output: %s", out)
+	}
+}
+
+func TestEdit_ReplaceIntro_RejectsHeadingFragment(t *testing.T) {
+	dir := t.TempDir()
+	docPath := writeTestADF(t, dir)
+	fragPath := writeFragmentMD(t, dir, "## Bad heading\n\nbody")
+
+	_, errOut, code := runCLI(t, "edit", "--input", docPath, "--replace-intro", fragPath)
+	if code == 0 {
+		t.Fatal("expected non-zero exit when fragment starts with heading")
+	}
+	if !strings.Contains(errOut, "must not start with a heading") {
+		t.Errorf("expected error message about leading heading: %s", errOut)
+	}
+}
+
+// ── page apply --replace-intro / --multi flag validation ──────────────────────
+
+func TestPageApply_ReplaceIntro_RequiresFragment(t *testing.T) {
+	_, errOut, code := runCLI(t, "page", "apply", "--page-id", "123",
+		"--replace-intro")
+	if code == 0 {
+		t.Fatal("expected non-zero exit when --fragment missing")
+	}
+	if !strings.Contains(errOut, "--fragment") {
+		t.Errorf("expected --fragment in error: %s", errOut)
+	}
+}
+
+func TestPageApply_Multi_MutuallyExclusive(t *testing.T) {
+	dir := t.TempDir()
+	multi := filepath.Join(dir, "ops.json")
+	os.WriteFile(multi, []byte(`{"operations":[]}`), 0644)
+	_, errOut, code := runCLI(t, "page", "apply", "--page-id", "123",
+		"--multi", multi, "--delete-section", "X")
+	if code == 0 {
+		t.Fatal("expected non-zero exit when --multi combined with single op")
+	}
+	if !strings.Contains(errOut, "mutually exclusive") {
+		t.Errorf("expected 'mutually exclusive' message: %s", errOut)
+	}
+}
+
+func TestPageApply_Multi_RejectsEmptyOps(t *testing.T) {
+	dir := t.TempDir()
+	multi := filepath.Join(dir, "ops.json")
+	os.WriteFile(multi, []byte(`{"operations":[]}`), 0644)
+	_, errOut, code := runCLI(t, "page", "apply", "--page-id", "123", "--multi", multi)
+	if code == 0 {
+		t.Fatal("expected non-zero exit when ops list empty")
+	}
+	if !strings.Contains(errOut, "no operations") {
+		t.Errorf("expected 'no operations' in error: %s", errOut)
+	}
+}
+
+func TestPageApply_Multi_ValidatesOpKind(t *testing.T) {
+	dir := t.TempDir()
+	multi := filepath.Join(dir, "ops.json")
+	os.WriteFile(multi, []byte(`{"operations":[{"kind":"bogus"}]}`), 0644)
+	_, errOut, code := runCLI(t, "page", "apply", "--page-id", "123", "--multi", multi)
+	if code == 0 {
+		t.Fatal("expected non-zero exit for unknown op kind")
+	}
+	if !strings.Contains(errOut, "unknown op kind") {
+		t.Errorf("expected 'unknown op kind' in error: %s", errOut)
+	}
+}
+
+func TestPageApply_Multi_ValidatesRequiredFields(t *testing.T) {
+	dir := t.TempDir()
+	multi := filepath.Join(dir, "ops.json")
+	// replace-section requires heading+fragment
+	os.WriteFile(multi, []byte(`{"operations":[{"kind":"replace-section"}]}`), 0644)
+	_, errOut, code := runCLI(t, "page", "apply", "--page-id", "123", "--multi", multi)
+	if code == 0 {
+		t.Fatal("expected non-zero exit when replace-section missing heading")
+	}
+	if !strings.Contains(errOut, "heading") {
+		t.Errorf("expected 'heading' in error: %s", errOut)
+	}
+}
+
+// ── page rewrite ──────────────────────────────────────────────────────────────
+
+func TestPageRewrite_MissingArgs(t *testing.T) {
+	_, errOut, code := runCLI(t, "page", "rewrite")
+	if code == 0 {
+		t.Fatal("expected non-zero exit when --page-id missing")
+	}
+	if !strings.Contains(errOut, "--page-id") {
+		t.Errorf("expected --page-id in error: %s", errOut)
+	}
+}
+
+func TestPageRewrite_MissingMarkdown(t *testing.T) {
+	_, errOut, code := runCLI(t, "page", "rewrite", "--page-id", "123")
+	if code == 0 {
+		t.Fatal("expected non-zero exit when --markdown missing")
+	}
+	if !strings.Contains(errOut, "--markdown") {
+		t.Errorf("expected --markdown in error: %s", errOut)
+	}
+}
+
+func TestPageRewrite_UnknownStrategy(t *testing.T) {
+	dir := t.TempDir()
+	mdPath := filepath.Join(dir, "in.md")
+	os.WriteFile(mdPath, []byte("## A\n"), 0644)
+	_, errOut, code := runCLI(t, "page", "rewrite",
+		"--page-id", "1", "--markdown", mdPath, "--strategy", "full-replace")
+	if code == 0 {
+		t.Fatal("expected non-zero exit for unknown strategy")
+	}
+	if !strings.Contains(errOut, "unknown strategy") {
+		t.Errorf("expected 'unknown strategy' in error: %s", errOut)
+	}
+}
+
+// ── splitMarkdownByHeadings / parseATXHeading ─────────────────────────────────
+
+func TestParseATXHeading(t *testing.T) {
+	cases := []struct {
+		in      string
+		level   int
+		title   string
+		isHead  bool
+	}{
+		{"## Foo", 2, "Foo", true},
+		{"# Foo", 1, "Foo", true},
+		{"### Foo Bar", 3, "Foo Bar", true},
+		{"## Foo ##", 2, "Foo", true},
+		{"####### TooDeep", 0, "", false}, // 7 hashes
+		{"##NoSpace", 0, "", false},
+		{"  ## Indented", 0, "", false},
+		{"plain text", 0, "", false},
+		{"", 0, "", false},
+	}
+	for _, c := range cases {
+		l, t2, ok := parseATXHeading(c.in)
+		if ok != c.isHead || l != c.level || t2 != c.title {
+			t.Errorf("parseATXHeading(%q) = (%d,%q,%v), want (%d,%q,%v)",
+				c.in, l, t2, ok, c.level, c.title, c.isHead)
+		}
+	}
+}
+
+func TestSplitMarkdownByHeadings(t *testing.T) {
+	src := []byte("intro line 1\nintro line 2\n\n## Alpha\n\nbody A\n\n## Bravo\n\nbody B\n")
+	intro, sections, err := splitMarkdownByHeadings(src)
+	if err != nil {
+		t.Fatalf("unexpected: %v", err)
+	}
+	if !strings.Contains(intro, "intro line 1") || !strings.Contains(intro, "intro line 2") {
+		t.Errorf("intro not captured: %q", intro)
+	}
+	if len(sections) != 2 {
+		t.Fatalf("want 2 sections, got %d", len(sections))
+	}
+	if sections[0].title != "Alpha" || sections[0].level != 2 {
+		t.Errorf("section 0 wrong: %+v", sections[0])
+	}
+	if !strings.Contains(sections[0].body, "body A") {
+		t.Errorf("section 0 body wrong: %q", sections[0].body)
+	}
+	if sections[1].title != "Bravo" {
+		t.Errorf("section 1 wrong: %+v", sections[1])
+	}
+}
+
+func TestSplitMarkdownByHeadings_NoIntro(t *testing.T) {
+	src := []byte("## Alpha\n\nbody\n")
+	intro, sections, err := splitMarkdownByHeadings(src)
+	if err != nil {
+		t.Fatalf("unexpected: %v", err)
+	}
+	if intro != "" {
+		t.Errorf("expected empty intro, got %q", intro)
+	}
+	if len(sections) != 1 {
+		t.Fatalf("want 1 section, got %d", len(sections))
+	}
+}
+
+func TestSplitMarkdownByHeadings_FullText(t *testing.T) {
+	// fullText must include the heading line + body so a fragment can be
+	// re-rendered into ADF and replace the matched section.
+	src := []byte("## Alpha\n\nbody A\n")
+	_, sections, _ := splitMarkdownByHeadings(src)
+	if len(sections) != 1 {
+		t.Fatalf("want 1 section, got %d", len(sections))
+	}
+	full := sections[0].fullText()
+	if !strings.HasPrefix(full, "## Alpha") {
+		t.Errorf("fullText must start with heading line: %q", full)
+	}
+	if !strings.Contains(full, "body A") {
+		t.Errorf("fullText must include body: %q", full)
+	}
+}
+
+// ── applyOp / multi spec validation ────────────────────────────────────────────
+
+func TestValidateMultiOp(t *testing.T) {
+	cases := []struct {
+		op      multiOp
+		wantErr bool
+	}{
+		{multiOp{Kind: "append", Fragment: "f.md"}, false},
+		{multiOp{Kind: "append"}, true},
+		{multiOp{Kind: "replace-intro", Fragment: "f.md"}, false},
+		{multiOp{Kind: "replace-intro"}, true},
+		{multiOp{Kind: "replace-section", Heading: "H", Fragment: "f.md"}, false},
+		{multiOp{Kind: "replace-section", Fragment: "f.md"}, true},
+		{multiOp{Kind: "delete-section", Heading: "H"}, false},
+		{multiOp{Kind: "delete-section"}, true},
+		{multiOp{Kind: "table-add-row", Heading: "H", Row: "a|b"}, false},
+		{multiOp{Kind: "table-add-row", Heading: "H"}, true},
+		{multiOp{Kind: "bogus"}, true},
+	}
+	for _, c := range cases {
+		err := validateMultiOp(c.op)
+		if (err != nil) != c.wantErr {
+			t.Errorf("validateMultiOp(%+v) err=%v, wantErr=%v", c.op, err, c.wantErr)
+		}
+	}
+}

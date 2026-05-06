@@ -286,6 +286,81 @@ func TestConvertFragment_NoDocWrapper(t *testing.T) {
 	}
 }
 
+func TestReplaceIntro_WithIntro(t *testing.T) {
+	doc := Doc(
+		Paragraph(Text("intro line 1")),
+		Paragraph(Text("intro line 2")),
+		Heading(2, Text("Alpha")),
+		Paragraph(Text("body A")),
+	)
+	frag := []Node{Paragraph(Text("new intro"))}
+	got, err := ReplaceIntro(doc, frag)
+	if err != nil {
+		t.Fatalf("unexpected: %v", err)
+	}
+	if len(got.Content) != 3 {
+		t.Fatalf("want 3 nodes, got %d", len(got.Content))
+	}
+	if paraText(got.Content[0]) != "new intro" {
+		t.Errorf("want new intro, got %q", paraText(got.Content[0]))
+	}
+	if got.Content[1].Type != "heading" || headingText(got.Content[1]) != "Alpha" {
+		t.Errorf("expected Alpha heading at index 1: %+v", got.Content[1])
+	}
+	if paraText(got.Content[2]) != "body A" {
+		t.Errorf("Alpha body corrupted: %q", paraText(got.Content[2]))
+	}
+}
+
+func TestReplaceIntro_NoLeadingContent(t *testing.T) {
+	// Page where the first node is already a heading: fragment is prepended.
+	doc := sampleDoc()
+	frag := []Node{Paragraph(Text("brand new intro"))}
+	got, err := ReplaceIntro(doc, frag)
+	if err != nil {
+		t.Fatalf("unexpected: %v", err)
+	}
+	if len(got.Content) != 7 {
+		t.Fatalf("want 7 nodes, got %d", len(got.Content))
+	}
+	if got.Content[0].Type != "paragraph" || paraText(got.Content[0]) != "brand new intro" {
+		t.Errorf("expected prepended intro at index 0: %+v", got.Content[0])
+	}
+	if got.Content[1].Type != "heading" || headingText(got.Content[1]) != "Alpha" {
+		t.Errorf("expected Alpha at index 1: %+v", got.Content[1])
+	}
+}
+
+func TestReplaceIntro_FragmentStartsWithHeading(t *testing.T) {
+	doc := Doc(
+		Paragraph(Text("intro")),
+		Heading(2, Text("Alpha")),
+	)
+	frag := []Node{Heading(2, Text("Bad"))}
+	if _, err := ReplaceIntro(doc, frag); err == nil {
+		t.Fatal("expected error when fragment starts with a heading")
+	}
+}
+
+func TestReplaceIntro_EmptyFragment(t *testing.T) {
+	// Empty fragment effectively deletes the intro.
+	doc := Doc(
+		Paragraph(Text("intro 1")),
+		Paragraph(Text("intro 2")),
+		Heading(2, Text("Alpha")),
+	)
+	got, err := ReplaceIntro(doc, nil)
+	if err != nil {
+		t.Fatalf("unexpected: %v", err)
+	}
+	if len(got.Content) != 1 {
+		t.Fatalf("want 1 node, got %d", len(got.Content))
+	}
+	if got.Content[0].Type != "heading" {
+		t.Errorf("want heading remaining, got %q", got.Content[0].Type)
+	}
+}
+
 // ---------- helpers ----------
 
 func headingTitles(doc Node) []string {
