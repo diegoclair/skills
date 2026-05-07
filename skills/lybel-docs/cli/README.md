@@ -32,8 +32,10 @@ iwr -useb https://raw.githubusercontent.com/lybel-app/skills/main/skills/lybel-d
 
 The script downloads the correct binary, places it at
 `~/.claude/skills/lybel-docs/bin/lybel-docs` (or `.exe` on Windows), and also
-fetches the SKILL.md and reference files. See
-[`install/README.md`](install/README.md) for exactly what the scripts do.
+extracts the SKILL.md and reference files from the same release archive.
+The scripts live at [`../install/install.sh`](../install/install.sh) and
+[`../install/install.ps1`](../install/install.ps1) — read them before piping
+to `bash`/`iex` if you want to inspect what runs.
 
 ### Step 3 — Verify the binary
 
@@ -194,7 +196,8 @@ Requires Go 1.21+. No other runtime dependencies.
 
 ```bash
 make build     # builds bin/lybel-docs
-make install   # builds and copies to ../../skills/lybel-docs/bin/lybel-docs
+make install   # builds and copies to ~/.claude/skills/lybel-docs/bin/lybel-docs
+               # (override with INSTALL_DIR=/custom/path)
 ```
 
 ### Commands
@@ -233,36 +236,41 @@ network error.
 | File | Purpose |
 |---|---|
 | [`SETUP.md`](SETUP.md) | Manual credential setup — alternative to the interactive wizard |
-| `~/.claude/skills/lybel-docs/SKILL.md` | How Claude uses this skill (installed by the install script) |
-| [`install/README.md`](install/README.md) | What the install scripts do, for humans who want to inspect before running |
+| [`../SKILL.md`](../SKILL.md) | How Claude uses this skill (installed by the install script to `~/.claude/skills/lybel-docs/SKILL.md`) |
+| [`../install/install.sh`](../install/install.sh) / [`install.ps1`](../install/install.ps1) | The install scripts — inspect before piping to `bash`/`iex` |
 
 ### Repository layout
 
-```
-README.md                   This file
-SETUP.md                    Manual credential setup guide
-install/
-  install.sh                POSIX install script (Linux / macOS)
-  install.ps1               Windows install script
-  README.md                 What the scripts do
-adf/
-  builder.go                ADF node + mark types and constructor helpers
-  converter.go              goldmark AST -> ADF walker
-  macros.go                 Pre-processing for [TOC] and ::: container blocks
-  edit.go                   Section-level edit ops (append/insert/replace/delete)
-  table_edit.go             Table-level ops + --at-level support
-  confluence.go             REST API v2 HTTP client + creds + CQL search + 409 detection
-  digest.go                 Slim page-summary builder (heading outline, macros, words)
-  render.go                 ADF -> markdown-ish plain text (used by home cache)
-  cache.go                  HomeCache type + load/save (~/.cache/lybel-docs/home.json)
-  lint.go                   ADF structure validator
-  *_test.go                 Tests
-main.go                     CLI entry, flag parsing, IO plumbing (incl. page digest/apply, search)
-main_test.go                CLI integration tests
-```
+This is the **CLI source dir** (`skills/lybel-docs/cli/`). The skill payload
+lives one level up at `skills/lybel-docs/` (SKILL.md + reference/), and the
+end-user install scripts live at `skills/lybel-docs/install/`. See the
+[root README](../../../README.md) for the full repo convention.
 
----
-
-> **Repo placeholder:** all URLs above reference `lybel-app/skills`. Once the
-> final GitHub repository is confirmed, a single find-replace on this file and
-> `install/README.md` is all that is needed.
+```
+skills/lybel-docs/
+├── SKILL.md                Skill entrypoint (read by Claude at runtime)
+├── reference/              Skill reference docs (templates, taxonomy, workflows)
+├── install/
+│   ├── install.sh          POSIX install script (Linux / macOS)
+│   └── install.ps1         Windows install script
+└── cli/                    ← you are here
+    ├── README.md           This file
+    ├── SETUP.md            Manual credential setup guide
+    ├── Makefile            build / build-all / test / install
+    ├── main.go             CLI entry, flag parsing, IO plumbing (incl. page digest/apply, search)
+    ├── main_test.go        CLI integration tests
+    ├── go.mod / go.sum
+    ├── setup/              Credential wizard (lybel-docs setup)
+    └── adf/
+        ├── builder.go      ADF node + mark types and constructor helpers
+        ├── converter.go    goldmark AST -> ADF walker
+        ├── macros.go       Pre-processing for [TOC] and ::: container blocks
+        ├── edit.go         Section-level edit ops (append/insert/replace/delete)
+        ├── table_edit.go   Table-level ops + --at-level support
+        ├── confluence.go   REST API v2 HTTP client + creds + CQL search + 409 detection
+        ├── digest.go       Slim page-summary builder (heading outline, macros, words)
+        ├── render.go       ADF -> markdown-ish plain text (used by home cache)
+        ├── cache.go        HomeCache type + load/save (~/.cache/lybel-docs/home.json)
+        ├── lint.go         ADF structure validator
+        └── *_test.go       Tests
+```

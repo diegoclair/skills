@@ -94,8 +94,8 @@ A IA vai ler este README, detectar seu OS, rodar o instalador, e te ajudar a ger
 ### Opção C — caminho dev (clone do repo)
 
 ```bash
-# 1. Clone
-git clone https://github.com/lybel-app/skills.git
+# 1. Clone (cria diretório `skills/`)
+git clone https://github.com/lybel-app/skills.git lybel-skills
 cd lybel-skills
 
 # 2. Symlink da skill para o diretório do Claude
