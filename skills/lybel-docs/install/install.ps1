@@ -1,7 +1,7 @@
 # install.ps1 — PowerShell 5+ installer for lybel-docs (Windows)
 #
 # Usage (one-liner):
-#   iwr -useb https://raw.githubusercontent.com/lybel-app/skills/main/cli/lybel-docs/install/install.ps1 | iex
+#   iwr -useb https://raw.githubusercontent.com/lybel-app/skills/main/skills/lybel-docs/install/install.ps1 | iex
 #
 # Environment variables (all optional):
 #   $env:LYBEL_DOCS_REPO      GitHub "owner/repo" (default: lybel-app/skills)

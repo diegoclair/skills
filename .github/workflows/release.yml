@@ -18,14 +18,14 @@ jobs:
         with:
           go-version: '1.21'
           cache: true
-          cache-dependency-path: cli/lybel-docs/go.sum
+          cache-dependency-path: skills/lybel-docs/cli/go.sum
 
       - name: Run tests
-        working-directory: cli/lybel-docs
+        working-directory: skills/lybel-docs/cli
         run: make test
 
       - name: Cross-compile binaries
-        working-directory: cli/lybel-docs
+        working-directory: skills/lybel-docs/cli
         run: make build-all VERSION=${{ github.ref_name }}
 
       - name: Package platform ZIPs
@@ -50,7 +50,7 @@ jobs:
             cp -r skills/lybel-docs/reference "$stage/reference"
 
             mkdir -p "$stage/bin"
-            cp "cli/lybel-docs/dist/$src_bin" "$stage/bin/$dst_bin"
+            cp "skills/lybel-docs/cli/dist/$src_bin" "$stage/bin/$dst_bin"
             chmod +x "$stage/bin/$dst_bin"
 
             (cd "$stage" && zip -r "$GITHUB_WORKSPACE/release-assets/lybel-docs-$platform.zip" . -q)

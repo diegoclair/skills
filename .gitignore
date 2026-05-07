@@ -27,8 +27,8 @@ vendor/
 /bin/
 /dist/
 /build/
-cli/*/bin/
-cli/*/dist/
+skills/*/cli/bin/
+skills/*/cli/dist/
 skills/*/bin/lybel-docs
 skills/*/bin/lybel-docs.exe
 release-assets/

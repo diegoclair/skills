@@ -21,13 +21,13 @@ Read the `Platform:` field in your environment context.
 **Linux / macOS:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/lybel-app/skills/main/cli/lybel-docs/install/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/lybel-app/skills/main/skills/lybel-docs/install/install.sh | bash
 ```
 
 **Windows:**
 
 ```powershell
-iwr -useb https://raw.githubusercontent.com/lybel-app/skills/main/cli/lybel-docs/install/install.ps1 | iex
+iwr -useb https://raw.githubusercontent.com/lybel-app/skills/main/skills/lybel-docs/install/install.ps1 | iex
 ```
 
 The script downloads the correct binary, places it at
@@ -170,13 +170,13 @@ Conduct entirely in chat — no terminal commands needed from the user.
 **Linux / macOS:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/lybel-app/skills/main/cli/lybel-docs/install/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/lybel-app/skills/main/skills/lybel-docs/install/install.sh | bash
 ```
 
 **Windows:**
 
 ```powershell
-iwr -useb https://raw.githubusercontent.com/lybel-app/skills/main/cli/lybel-docs/install/install.ps1 | iex
+iwr -useb https://raw.githubusercontent.com/lybel-app/skills/main/skills/lybel-docs/install/install.ps1 | iex
 ```
 
 After the script finishes, configure your credentials:

@@ -18,8 +18,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lybel-app/skills/cli/lybel-docs/adf"
-	"github.com/lybel-app/skills/cli/lybel-docs/setup"
+	"github.com/lybel-app/skills/skills/lybel-docs/cli/adf"
+	"github.com/lybel-app/skills/skills/lybel-docs/cli/setup"
 )
 
 // version is injected at build time via -ldflags "-X main.version=..."
@@ -3404,8 +3404,8 @@ func runIndexSync(args []string, stdout, stderr io.Writer) (int, error) {
 func runUpdate(args []string, stdout, stderr io.Writer) (int, error) {
 	const (
 		repoOwnerRepo = "lybel-app/skills"
-		installShURL  = "https://raw.githubusercontent.com/lybel-app/skills/main/cli/lybel-docs/install/install.sh"
-		installPS1URL = "https://raw.githubusercontent.com/lybel-app/skills/main/cli/lybel-docs/install/install.ps1"
+		installShURL  = "https://raw.githubusercontent.com/lybel-app/skills/main/skills/lybel-docs/install/install.sh"
+		installPS1URL = "https://raw.githubusercontent.com/lybel-app/skills/main/skills/lybel-docs/install/install.ps1"
 		// exit 10 is reserved for "update available" so scripts/CI can
 		// distinguish "all good" (0) from "needs upgrade" without parsing.
 		exitUpdateAvailable = 10

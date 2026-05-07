@@ -50,29 +50,48 @@ O Claude usa o CLI quando ele existe e cai no MCP automaticamente quando não. R
 
 ---
 
-## Quick start — caminho fácil (não precisa ser dev)
+## Como instalar
 
-Se você não mexe com código, segue esses 5 passos:
+Três caminhos, do mais fácil pro mais técnico.
+
+### Opção A — peça pra uma IA instalar pra você (mais fácil)
+
+Se você não está confortável com terminal, abra qualquer agente de IA (Claude, Gemini, ChatGPT, Cursor, etc.) e cole esta mensagem:
+
+> Quero instalar a skill `lybel-docs` no meu computador. A documentação está em https://github.com/lybel-app/skills. Lê o README, identifica meu sistema operacional, roda os comandos de instalação, e me guia pela configuração de credenciais Atlassian no final.
+
+A IA vai ler este README, detectar seu OS, rodar o instalador, e te ajudar a gerar o token Atlassian + configurar tudo. Ver [instruções para agentes de IA](#instruções-para-agentes-de-ia--instalação-assistida) abaixo (a IA usa essa seção como roteiro).
+
+### Opção B — você mesmo no terminal
 
 1. **Instale o Claude Desktop** — baixe em [claude.ai/download](https://claude.ai/download) e faça login com sua conta Lybel.
-2. **Baixe o instalador** para o seu sistema:
-   - Windows: [install.bat](https://raw.githubusercontent.com/lybel-app/skills/main/install.bat)
-   - macOS/Linux: [install.sh](https://raw.githubusercontent.com/lybel-app/skills/main/install.sh)
-3. **Duplo-clique no arquivo baixado.**
-   - Windows: pode aparecer um aviso do SmartScreen — clique em "Mais informações" → "Executar mesmo assim".
-   - macOS/Linux: se não abrir com duplo-clique, abra o Terminal, vá na pasta de Downloads e rode `bash install.sh`.
-4. **Reabra o Claude Desktop** e vá na aba **Code**. Em **Settings → Integrations**, conecte sua conta Atlassian (OAuth — só autorizar na janela que abre).
-5. **Pronto.** Agora é só perguntar. Exemplos que funcionam de primeira:
-   - *"onde cadastro um novo advogado?"*
-   - *"me dá a página de parceiros"*
+2. **Rode o instalador:**
+
+   **macOS/Linux:**
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/lybel-app/skills/main/skills/lybel-docs/install/install.sh | bash
+   ```
+
+   **Windows (PowerShell):**
+   ```powershell
+   iwr -useb https://raw.githubusercontent.com/lybel-app/skills/main/skills/lybel-docs/install/install.ps1 | iex
+   ```
+
+3. **Configure credenciais Atlassian:**
+   - Gere um API token em https://id.atlassian.com/manage-profile/security/api-tokens (botão **Create API token**, dá um nome qualquer, copia o valor — só aparece uma vez).
+   - Rode: `lybel-docs setup` (ele pergunta email + token interativamente).
+   - Valida: `lybel-docs setup --check` deve retornar `credentials valid`.
+
+4. **Reabra o Claude Desktop**, vá em **Code → Settings → Integrations** e conecte sua conta Atlassian via OAuth (necessário pro fallback MCP, caso a CLI falhe).
+
+5. **Pronto.** Pergunte coisas como:
+   - *"onde fica a página de parceiros?"*
+   - *"cria uma ata de reunião com o Itaú"*
    - *"quais aceleradoras a Lybel está participando?"*
-   - *"cria uma página de ata de reunião com o Itaú"*
 
-> **Precisa atualizar?** Baixe o instalador de novo e duplo-clique. Ele sobrescreve a versão anterior — é seguro re-executar.
+> **Para atualizar:** rode `lybel-docs update`. Pega a última release do GitHub, mantém credenciais e cache.
 
----
-
-## Quick start — caminho dev
+### Opção C — caminho dev (clone do repo)
 
 ```bash
 # 1. Clone
@@ -83,7 +102,7 @@ cd lybel-skills
 ln -s "$(pwd)/skills/lybel-docs" ~/.claude/skills/lybel-docs
 
 # 3. (Recomendado) Build do CLI Go — habilita digest/apply/search e reduz custo de tokens
-cd cli/lybel-docs && make install
+cd skills/lybel-docs/cli && make install
 # (Build padrão instala em ~/.claude/skills/lybel-docs/bin/lybel-docs)
 # Configurar credenciais Atlassian:
 lybel-docs setup
@@ -94,6 +113,85 @@ cd -
 ```
 
 No Windows, troque o `ln -s` por um **diretório junction** (`mklink /J`) ou copie a pasta.
+
+---
+
+## Instruções para agentes de IA — instalação assistida
+
+> Esta seção é um **roteiro pra agentes de IA** (Claude, Gemini, ChatGPT, Cursor, etc.) que estejam ajudando um usuário não-técnico a instalar a skill. Pula esta seção se você for humano — vê a [Opção B](#opção-b--você-mesmo-no-terminal) acima.
+
+### Pré-requisitos
+- Usuário tem conta Atlassian (a mesma que usa pra acessar `lybel.atlassian.net`).
+- Internet ativa pra baixar do GitHub Releases.
+
+### Passo 1 — Detectar sistema operacional
+- macOS / Linux → use `install.sh` (bash).
+- Windows → use `install.ps1` (PowerShell 5+).
+
+### Passo 2 — Rodar instalador
+
+**macOS / Linux:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/lybel-app/skills/main/skills/lybel-docs/install/install.sh | bash
+```
+
+**Windows (PowerShell):**
+```powershell
+iwr -useb https://raw.githubusercontent.com/lybel-app/skills/main/skills/lybel-docs/install/install.ps1 | iex
+```
+
+O instalador baixa o último release, descompacta em `~/.claude/skills/lybel-docs/` (ou `%USERPROFILE%\.claude\skills\lybel-docs\` no Windows), e adiciona o binário ao PATH.
+
+### Passo 3 — Configurar credenciais (não interativo)
+
+A skill precisa de **email Atlassian** + **API token**. **Não rode `lybel-docs setup` sem flags em sessão de IA** — ele pede input interativo no stdin e trava.
+
+**3.1 — Guie o usuário a gerar o token:**
+1. Diga: "Abra https://id.atlassian.com/manage-profile/security/api-tokens em uma aba nova."
+2. "Clique em **Create API token**, dê um nome qualquer (ex: `lybel-docs`)."
+3. "Copia o token — atenção: ele só aparece uma vez. Cola aqui."
+
+**3.2 — Pergunte o email** se ainda não souber (provavelmente é o email corporativo do usuário, ex: `nome@lybel.com.br` ou `nome@novapaytech.com`).
+
+**3.3 — Salve as credenciais não-interativamente:**
+```bash
+lybel-docs setup --email "USER_EMAIL" --token "USER_TOKEN"
+```
+
+### Passo 4 — Validar
+
+```bash
+lybel-docs setup --check
+```
+
+Códigos de saída:
+- `0` — credenciais válidas, prossegue.
+- `1` — arquivo de credenciais não foi salvo (volta no Passo 3.3).
+- `2` — credenciais inválidas (token errado ou revogado — usuário gera novo token).
+- `3` — erro de rede (rede do usuário tá ruim, tenta de novo).
+
+### Passo 5 — Smoke test
+
+```bash
+lybel-docs home --refresh
+```
+
+Deve baixar a Home do Confluence Lybel e cachear localmente. Se imprimir o digest da Home sem erro, instalação completa.
+
+### Troubleshooting comum
+
+| Sintoma | Causa provável | Resolução |
+|---|---|---|
+| `command not found: lybel-docs` | PATH ainda não atualizado | Pede pro usuário fechar e reabrir o terminal. Alternativa: rode com path absoluto `~/.claude/skills/lybel-docs/bin/lybel-docs ...` |
+| `Permission denied` no Linux/macOS | Binário sem flag de execução | `chmod +x ~/.claude/skills/lybel-docs/bin/lybel-docs` |
+| Windows SmartScreen bloqueia | Binário sem assinatura | Usuário marca "Run anyway" no aviso |
+| `setup --check` retorna 2 | Token revogado ou digitado errado | Gera novo token (Passo 3.1) e refaz Passo 3.3 |
+| `setup --check` retorna 3 | Sem internet, ou Atlassian fora | Tentar de novo em alguns minutos |
+
+### O que NÃO fazer
+- Não rode `lybel-docs setup` (sem flags) em sessão de IA — é interativo, vai travar.
+- Não tente fazer `git clone` do repo pro caminho fácil — isso é a Opção C (dev). O usuário não-técnico não precisa do código fonte.
+- Não suba o token do usuário pra nenhum lugar (chat, log, screenshot, repo). Confidencial — o usuário cola só pro `setup` salvar localmente.
 
 ---
 
@@ -162,29 +260,45 @@ Claude: Página "Nubank — Parceria" (última atualização: 2026-04-12):
 
 ## Desenvolvendo
 
-### Estrutura do repo
+### Estrutura do repo (convenção)
+
+Cada skill é **self-contained** — tudo relacionado a ela vive em `skills/<nome>/`:
 
 ```
 lybel-skills/
-├── skills/                    # Skills publicadas (SKILL.md + reference/)
-│   └── lybel-docs/
-│       ├── SKILL.md           # Frontmatter + instruções
-│       ├── reference/         # Docs auxiliares (taxonomia, aliases, templates)
-│       └── bin/               # Binário Go opcional (ADF builder)
-├── cli/                       # Código-fonte dos binários Go
-│   └── lybel-docs/
-├── install.bat                # Instalador Windows
-├── install.sh                 # Instalador macOS/Linux
-├── LICENSE                    # MIT
+├── skills/
+│   └── <nome-da-skill>/
+│       ├── SKILL.md           # Frontmatter + instruções da skill
+│       ├── reference/         # Docs auxiliares (templates, taxonomia, workflows…)
+│       ├── cli/               # (opcional) Código-fonte do CLI Go que a skill usa
+│       │   ├── main.go
+│       │   ├── adf/           # pacotes Go
+│       │   ├── setup/
+│       │   ├── go.mod
+│       │   ├── Makefile       # build, test, install
+│       │   └── README.md      # docs do CLI
+│       ├── install/           # (opcional) Scripts de instalação pra usuário final
+│       │   ├── install.sh     # macOS/Linux
+│       │   └── install.ps1    # Windows
+│       └── bin/               # Binário compilado (gitignored — gerado por make install)
+├── .github/workflows/
+│   └── release.yml            # Tag v* dispara build cross-platform + GitHub Release
+├── LICENSE
 └── README.md                  # Este arquivo
 ```
 
+**Regras da convenção:**
+- **Skills sem CLI** simplesmente não têm `cli/`. Funciona normal — `SKILL.md` + `reference/` é o mínimo.
+- **Binários** são gerados por `make install` dentro de `skills/<nome>/cli/` — instalam direto em `~/.claude/skills/<nome>/bin/` (caminho de runtime do Claude). O diretório `bin/` no repo é gitignored.
+- **Release assets** (ZIPs cross-platform) são gerados pelo CI em runtime, **não vivem no repo**.
+
 ### Como adicionar uma skill nova
 
-1. Crie `skills/<nome-da-skill>/SKILL.md` seguindo o formato de [skills.md](https://docs.claude.com/en/docs/claude-code/skills).
-2. Adicione arquivos de referência em `skills/<nome>/reference/`.
-3. Teste localmente via symlink (veja [Quick start — caminho dev](#quick-start--caminho-dev)).
-4. Abra PR. Após merge, a release é publicada automaticamente pelo GitHub Actions (em breve).
+1. Cria `skills/<nome-da-skill>/SKILL.md` seguindo o formato de [skills.md](https://docs.claude.com/en/docs/claude-code/skills).
+2. Adiciona arquivos de referência em `skills/<nome>/reference/`.
+3. Se a skill precisa de CLI, cria `skills/<nome>/cli/` com `main.go` + `Makefile`. Se for só prompts/MCP, pula.
+4. Testa localmente via symlink (veja [Opção C](#opção-c--caminho-dev-clone-do-repo)).
+5. Abre PR. Após merge, criar tag `vX.Y.Z` dispara o workflow de release que monta os ZIPs cross-platform e publica no GitHub Releases automaticamente.
 
 ### Convenções
 
