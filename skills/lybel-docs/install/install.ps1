@@ -102,7 +102,35 @@ if (-not (Test-Path $ExtractedBin)) {
 }
 
 $Destination = Join-Path $BinDir $BinName
+
+# Install the binary atomically.
+#
+# Copy-Item -Force fails with "file in use" when the .exe is currently
+# being executed — exactly what happens during `lybel-docs update`, which
+# shells out to this script while running from $Destination. Windows DOES
+# allow renaming a running .exe though (the live process keeps its handle).
+# So: rename the running file out of the way first, then copy the new one
+# in. The .old file is unlinked on a later run when nothing holds it.
+$OldDestination = "$Destination.old"
+if (Test-Path $Destination) {
+    if (Test-Path $OldDestination) {
+        Remove-Item -Force $OldDestination -ErrorAction SilentlyContinue
+    }
+    try {
+        Move-Item -Path $Destination -Destination $OldDestination -Force
+    } catch {
+        # Rename failed (very rare); fall through to Copy-Item which will
+        # surface the real error.
+    }
+}
 Copy-Item -Path $ExtractedBin -Destination $Destination -Force
+
+# Best-effort cleanup of the previous binary. Silently skip if the OS
+# still has a handle on it (process still running) — next install/update
+# will sweep it.
+if (Test-Path $OldDestination) {
+    Remove-Item -Force $OldDestination -ErrorAction SilentlyContinue
+}
 
 # Install the skill payload (SKILL.md + reference/) bundled in the same
 # archive — no separate raw.githubusercontent.com fetches needed.

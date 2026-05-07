@@ -135,9 +135,21 @@ if [ ! -f "$EXTRACTED_BIN" ]; then
 fi
 [ -f "$EXTRACTED_BIN" ] || die "binary not found in archive; contents: $(find "$EXTRACT_DIR" | head -20)"
 
-# Install the binary.
-cp "$EXTRACTED_BIN" "$BIN_DIR/$BIN_NAME"
-chmod +x "$BIN_DIR/$BIN_NAME"
+# Install the binary atomically.
+#
+# `cp` over the existing binary fails with "Text file busy" (ETXTBSY) when
+# the binary is currently being executed — exactly what happens during
+# `lybel-docs update`, which shells out to this script while running from
+# $BIN_DIR/$BIN_NAME. The fix: cp into a sibling temp file in the SAME
+# directory, then rename. rename(2) is allowed even on running executables
+# (the live process keeps using the old inode, now anonymous; the new file
+# takes the path). Same-filesystem requirement is why the temp lives in
+# $BIN_DIR, not next to $EXTRACTED_BIN (which is in $TMPDIR — likely a
+# different filesystem on Linux).
+TMP_BIN="$BIN_DIR/.${BIN_NAME}.new"
+cp "$EXTRACTED_BIN" "$TMP_BIN"
+chmod +x "$TMP_BIN"
+mv -f "$TMP_BIN" "$BIN_DIR/$BIN_NAME"
 
 # Install the skill payload (SKILL.md + reference/) bundled in the same archive.
 SKILL_FILES_OK=0
