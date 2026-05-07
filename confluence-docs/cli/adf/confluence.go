@@ -478,6 +478,35 @@ func (c *ConfluenceClient) DeletePage(pageID string) error {
 	return nil
 }
 
+// ReorderPage repositions a page among its siblings (or appends it as the
+// last child of a target parent). Uses the v1 endpoint
+// `PUT /wiki/rest/api/content/{pageId}/move/{position}/{targetId}` since the
+// v2 API doesn't expose sibling-order control.
+//
+// position must be one of:
+//
+//	"before" — place pageID immediately before targetID (same parent).
+//	"after"  — place pageID immediately after targetID (same parent).
+//	"append" — append pageID as the last child of targetID (re-parents).
+//
+// Body and title are untouched.
+func (c *ConfluenceClient) ReorderPage(pageID, position, targetID string) error {
+	switch position {
+	case "before", "after", "append":
+	default:
+		return fmt.Errorf("ReorderPage: invalid position %q (want before|after|append)", position)
+	}
+	if pageID == "" || targetID == "" {
+		return fmt.Errorf("ReorderPage: pageID and targetID are required")
+	}
+	path := fmt.Sprintf("/rest/api/content/%s/move/%s/%s", pageID, position, targetID)
+	_, _, err := c.doRequest("PUT", path, nil)
+	if err != nil {
+		return fmt.Errorf("reorder page %s %s %s: %w", pageID, position, targetID, err)
+	}
+	return nil
+}
+
 // CreatePage creates a new page under the given parent in the given space.
 // Content can be provided as ADF (adfBody != nil) or left empty.
 func (c *ConfluenceClient) CreatePage(spaceID, parentID, title string, adfBody *Node) (*PageCreateResult, error) {

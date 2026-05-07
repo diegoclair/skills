@@ -257,9 +257,9 @@ For most "qual o status" questions, the digest is enough — it shows the page's
 2. Confirm template (Advisor Sheet, Investor Sheet, Partner Sheet).
 3. Create under the correct parent (Workflow 3). Always confirm location before.
 
-### 8. Reorganize — "renomeia X" / "move X pra dentro de Y" / "deleta X"
+### 8. Reorganize — "renomeia X" / "move X pra dentro de Y" / "reordena X" / "deleta X"
 
-The `page move` and `page delete` verbs handle structural changes without touching the page body. Use them when the user asks to rename, reparent, or trash a page. **Always confirm the target with the user before deleting** — even soft delete (Confluence trash is restorable, but the user should still authorize).
+The `page move`, `page reorder`, and `page delete` verbs handle structural changes without touching the page body. Use them when the user asks to rename, reparent, reorder, or trash a page. **Always confirm the target with the user before deleting** — even soft delete (Confluence trash is restorable, but the user should still authorize).
 
 ```
 # Rename only (parent unchanged)
@@ -274,17 +274,27 @@ confluence-docs page move --page-id <id> --parent-id <newParentId> --title "New 
 # Preview without writing
 confluence-docs page move --page-id <id> --title "..." --dry-run
 
+# Reorder among siblings (same parent, just change position)
+confluence-docs page reorder --page-id <id> --before <siblingId>
+confluence-docs page reorder --page-id <id> --after  <siblingId>
+
+# Append as last child of a (possibly different) parent — re-parents
+confluence-docs page reorder --page-id <id> --append-to <parentId>
+
 # Soft-delete (restorable from Confluence trash)
 confluence-docs page delete --page-id <id> --yes
 ```
 
 **How move works under the hood:** v2 PUT requires the body, so `page move` GETs the current ADF and re-PUTs it with the new `parentId` / `title`. Body is preserved byte-for-byte; macros stay intact. The full ADF never enters the conversation context.
 
+**How reorder works under the hood:** v2 doesn't expose sibling-order control, so `page reorder` calls the v1 endpoint `PUT /wiki/rest/api/content/{id}/move/{position}/{targetId}` (positions: `before` | `after` | `append`). The body and title aren't touched — single round-trip, no GET needed.
+
 **When NOT to use:**
 - To change the **content** of a page → use `page apply` (section/table edit) or `page rewrite` / `page upload` (full body replacement).
 - To change the body **and** rename in one shot → use `page upload --title "..."` (you already have a new ADF) instead of two separate calls.
+- To change order **and** rename in one shot → run `page reorder` and `page move` as two separate calls (different APIs).
 
-**Bulk reorganizations:** when reparenting multiple pages or doing a multi-step restructure (rename + move + delete cascade), prefer running each `page move` / `page delete` as its own atomic command. The CLI returns a one-line JSON status per call (~50 bytes), so even 10–20 calls stay cheap. Confirm the new tree with `page children` afterwards.
+**Bulk reorganizations:** when reparenting multiple pages or doing a multi-step restructure (rename + move + reorder + delete cascade), prefer running each `page move` / `page reorder` / `page delete` as its own atomic command. The CLI returns a one-line JSON status per call (~50 bytes), so even 10–20 calls stay cheap. Confirm the new tree with `page children` afterwards.
 
 ## Editorial patterns for Lybel pages
 
@@ -344,6 +354,8 @@ Ordered by preference. Always try the cheapest tool that can answer the question
 | Create a new page | `page create --markdown` | `adf` to convert + MCP `createConfluencePage(adf)` | MCP `createConfluencePage(markdown)` |
 | Rename a page | `page move --page-id ID --title "New Title"` | `page get` + `page upload --title "..."` | MCP `updateConfluencePage` |
 | Move a page to a new parent | `page move --page-id ID --parent-id NEW_PARENT` | — | MCP `updateConfluencePage` |
+| Reorder siblings | `page reorder --page-id ID --before/--after SIBLING_ID` | — | manual drag in UI |
+| Append as last child of a parent | `page reorder --page-id ID --append-to PARENT_ID` | `page move --parent-id` (lands at first position) | manual drag in UI |
 | Soft-delete a page | `page delete --page-id ID --yes` | — | MCP `deleteConfluencePage` |
 | Build rich ADF from markdown | `adf` (with `[TOC]`, `:::expand`, `:::warning` extensions) | — | — |
 

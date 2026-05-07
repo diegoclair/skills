@@ -121,6 +121,14 @@ PAGE VERBS:
                Rename a page (--title) and/or move it under a new parent
                (--parent-id). At least one of the two is required. The body
                is preserved (refetched and re-PUT, since v2 PUT requires it).
+  page reorder --page-id ID (--before TARGET_ID | --after TARGET_ID
+               | --append-to NEW_PARENT_ID)
+               Reposition a page among its siblings (--before / --after) or
+               append it as the last child of a new parent (--append-to).
+               Wraps the v1 endpoint
+               PUT /wiki/rest/api/content/{id}/move/{position}/{targetId}
+               since v2 doesn't expose sibling-order control. Body and
+               title are not touched.
   page delete  --page-id ID [--yes]
                Trash a page (soft delete; restorable from Confluence trash).
                --yes is required to confirm.
@@ -622,7 +630,7 @@ func runEdit(args []string, stdin io.Reader, stdout, stderr io.Writer) (int, err
 // runPage handles the `page` subcommand with verbs: get, upload, create.
 func runPage(args []string, stdin io.Reader, stdout, stderr io.Writer) (int, error) {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "page: requires a verb: get, upload, create")
+		fmt.Fprintln(stderr, "page: requires a verb: get, upload, create, children, digest, apply, rewrite, move, reorder, delete")
 		return exitInputErr, errInvalidUsage
 	}
 	switch args[0] {
@@ -645,11 +653,13 @@ func runPage(args []string, stdin io.Reader, stdout, stderr io.Writer) (int, err
 		return runPageRewrite(args[1:], stdout, stderr)
 	case "move", "rename":
 		return runPageMove(args[1:], stdout, stderr)
+	case "reorder":
+		return runPageReorder(args[1:], stdout, stderr)
 	case "delete", "trash":
 		return runPageDelete(args[1:], stdout, stderr)
 	default:
 		fmt.Fprintln(stderr, "page: unknown verb:", args[0])
-		fmt.Fprintln(stderr, "  valid verbs: get, upload, create, children, digest, apply, rewrite, move, delete")
+		fmt.Fprintln(stderr, "  valid verbs: get, upload, create, children, digest, apply, rewrite, move, reorder, delete")
 		return exitInputErr, errInvalidUsage
 	}
 }
@@ -1298,6 +1308,110 @@ func runPageDelete(args []string, stdout, stderr io.Writer) (int, error) {
 
 	refreshHomeCacheAfterWrite(pageID, client, stderr)
 	fmt.Fprintf(stdout, `{"status":"trashed","pageId":%q}`+"\n", pageID)
+	return exitOK, nil
+}
+
+// runPageReorder repositions a page among its siblings, or appends it as the
+// last child of a different parent. Wraps the v1 move endpoint
+// (PUT /rest/api/content/{id}/move/{position}/{targetId}) — body and title
+// are not touched.
+func runPageReorder(args []string, stdout, stderr io.Writer) (int, error) {
+	var pageID string
+	var before, after, appendTo string
+
+	remaining, cloud, email, token, err := parseCommonPageFlags(args)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return exitInputErr, errInvalidUsage
+	}
+
+	for i := 0; i < len(remaining); i++ {
+		a := remaining[i]
+		switch a {
+		case "--page-id":
+			if i+1 >= len(remaining) {
+				fmt.Fprintln(stderr, "--page-id requires a value")
+				return exitInputErr, errInvalidUsage
+			}
+			pageID = remaining[i+1]
+			i++
+		case "--before":
+			if i+1 >= len(remaining) {
+				fmt.Fprintln(stderr, "--before requires a TARGET_PAGE_ID")
+				return exitInputErr, errInvalidUsage
+			}
+			before = remaining[i+1]
+			i++
+		case "--after":
+			if i+1 >= len(remaining) {
+				fmt.Fprintln(stderr, "--after requires a TARGET_PAGE_ID")
+				return exitInputErr, errInvalidUsage
+			}
+			after = remaining[i+1]
+			i++
+		case "--append-to":
+			if i+1 >= len(remaining) {
+				fmt.Fprintln(stderr, "--append-to requires a NEW_PARENT_PAGE_ID")
+				return exitInputErr, errInvalidUsage
+			}
+			appendTo = remaining[i+1]
+			i++
+		case "-h", "--help":
+			fmt.Fprintln(stdout, "page reorder — reposition a page among its siblings.")
+			fmt.Fprintln(stdout, "")
+			fmt.Fprintln(stdout, "  --page-id ID           page to reposition (required)")
+			fmt.Fprintln(stdout, "  --before TARGET_ID     place page right before TARGET (same parent)")
+			fmt.Fprintln(stdout, "  --after  TARGET_ID     place page right after  TARGET (same parent)")
+			fmt.Fprintln(stdout, "  --append-to PARENT_ID  append as last child of PARENT (re-parents)")
+			fmt.Fprintln(stdout, "")
+			fmt.Fprintln(stdout, "Exactly one of --before / --after / --append-to is required. Body and")
+			fmt.Fprintln(stdout, "title are NOT modified — use 'page move' for rename or reparent-to-")
+			fmt.Fprintln(stdout, "first-position. This calls the v1 endpoint")
+			fmt.Fprintln(stdout, "PUT /wiki/rest/api/content/{pageId}/move/{position}/{targetId}.")
+			return exitOK, nil
+		default:
+			fmt.Fprintln(stderr, "unknown flag:", a)
+			return exitInputErr, errInvalidUsage
+		}
+	}
+
+	if pageID == "" {
+		fmt.Fprintln(stderr, "page reorder: --page-id is required")
+		return exitInputErr, errInvalidUsage
+	}
+
+	var position, targetID string
+	picked := 0
+	if before != "" {
+		position, targetID, picked = "before", before, picked+1
+	}
+	if after != "" {
+		position, targetID, picked = "after", after, picked+1
+	}
+	if appendTo != "" {
+		position, targetID, picked = "append", appendTo, picked+1
+	}
+	if picked == 0 {
+		fmt.Fprintln(stderr, "page reorder: one of --before / --after / --append-to is required")
+		return exitInputErr, errInvalidUsage
+	}
+	if picked > 1 {
+		fmt.Fprintln(stderr, "page reorder: --before, --after, --append-to are mutually exclusive")
+		return exitInputErr, errInvalidUsage
+	}
+
+	client, ok := buildClient(cloud, email, token, stderr)
+	if !ok {
+		return exitUnknownErr, nil
+	}
+
+	if err := client.ReorderPage(pageID, position, targetID); err != nil {
+		fmt.Fprintln(stderr, "error:", err)
+		return exitUnknownErr, err
+	}
+
+	refreshHomeCacheAfterWrite(pageID, client, stderr)
+	fmt.Fprintf(stdout, `{"status":"ok","pageId":%q,"position":%q,"targetId":%q}`+"\n", pageID, position, targetID)
 	return exitOK, nil
 }
 

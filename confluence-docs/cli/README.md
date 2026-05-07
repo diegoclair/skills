@@ -152,9 +152,11 @@ Conduct entirely in chat — no terminal commands needed from the user.
   only sees a tiny status line. Supports `--append`, `--insert-after/before`,
   `--replace-section`, `--delete-section`, `--table-add-row`,
   `--table-remove-row`.
-- **Page lifecycle** (`page move`, `page delete`): rename a page, reparent it
-  under a new ancestor, or trash it (soft delete, restorable). Move is a
-  single command that handles rename + reparent in one PUT.
+- **Page lifecycle** (`page move`, `page reorder`, `page delete`): rename a
+  page, reparent it under a new ancestor, reorder it among siblings, or trash
+  it (soft delete, restorable). `move` handles rename + reparent in one PUT;
+  `reorder` calls the v1 `move/{position}/{targetId}` endpoint to shift
+  sibling order without touching body or title.
 - **CQL search** (`search`) returning compact TSV (id, title, url, excerpt)
   instead of MCP's verbose JSON.
 - Converts extended Markdown to Atlassian Document Format (ADF) JSON, including
@@ -214,6 +216,7 @@ make install   # builds and copies to ~/.claude/skills/confluence-docs/bin/confl
 | `page upload` | Push a local ADF file to an existing page |
 | `page create` | Create a new page (markdown or ADF source) |
 | `page move` | Rename and/or reparent a page. Flags: `--page-id ID` plus at least one of `--parent-id NEW_PARENT` / `--title NEW_TITLE`. Body is preserved (refetched and re-PUT, since v2 PUT requires it). Alias: `page rename` |
+| `page reorder` | Reposition a page among its siblings or append it under a different parent. Flags: `--page-id ID` plus exactly one of `--before TARGET_ID` / `--after TARGET_ID` / `--append-to PARENT_ID`. Calls the v1 `move/{position}/{targetId}` endpoint; body and title are not touched |
 | `page delete` | Soft-delete a page (sends to Confluence trash, restorable). Requires `--yes` to confirm. Alias: `page trash` |
 | `page children` | List direct children of a page (TSV: id, title). Old name `list-children` still works as alias |
 | `search` | CQL search via the v1 API. TSV output (`pageId\ttitle\turl\texcerpt`). Defaults to `space="lybel" AND type="page"` |
