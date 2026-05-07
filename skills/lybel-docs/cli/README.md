@@ -192,7 +192,7 @@ and say "instala essa skill".
 
 ### Manual install (build from source)
 
-Requires Go 1.21+. No other runtime dependencies.
+Requires Go 1.26.2+. No other runtime dependencies.
 
 ```bash
 make build     # builds bin/lybel-docs
