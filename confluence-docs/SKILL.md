@@ -336,6 +336,35 @@ Pages are read by people who weren't in the conversation that generated them. Be
 
 **Smell test**: if a new hire at the Lybel opens this page cold, will they understand it? If not, add one link or one half-sentence.
 
+### Pattern 4 — No process meta-noise. Pretend prior versions never existed.
+
+The page is the current state of thinking — not a record of how it got there. Avoid documenting your own editing process inside the page body. Specifically, **never write**:
+
+- ❌ "Substitui a versão anterior que tinha [problema]" / "Esta versão revoga a anterior" / "Reescrita após repesquisa"
+- ❌ "Era X, agora é Y" / "Mudamos de A pra B" (in the body of the page, as if the reader cared about the diff)
+- ❌ "v1 → v2" comparisons or any version numbering inside content
+- ❌ Apologetic notes about previous errors: "antes estava com erro factual no nome do CEO", "antes tratava em tom futuro"
+- ❌ Refactoring announcements: "esta página foi refatorada hoje", "antes era uma sub-seção, virou página própria"
+
+**Why this rule:** today's "v1 vs v2" becomes tomorrow's confusion when v3 arrives. A reader 6 months from now doesn't care that the wrong CEO name was once written here — they care if the right one is here now. **When fixing a factual error, just fix it. Pretend it never existed.** When restructuring, just restructure. Git history (or the page's own version history in Confluence) is the audit trail; the page body is the source of truth.
+
+**Histórico section — what to put and what NOT to put.** When a page has a "Histórico" / "Histórico da decisão" section, it records **substantive movements of the decision/state being documented** — not edits to the page itself. Use it for:
+
+- ✅ A real strategic pivot ("Decision changed from X to Y after data Z came in") — but write it from the perspective of the *decision*, not the *page*.
+- ✅ Regulatory or external events that shifted the page's conclusions ("BCB published Resolution 482/2025; we updated PSP eligibility accordingly")
+- ✅ A consolidated handoff moment ("Phase 0 closed on date X; this page archived its conclusions")
+
+Do NOT use it for:
+
+- ❌ "Refatorada hoje, estrutura simplificada" — that's an edit, not a movement
+- ❌ "Versão de manhã foi substituída pela de tarde" — same intra-day; the reader doesn't experience time as you do
+- ❌ "Adicionada seção Y / removida seção Z" — that's git history, not decision history
+- ❌ Author or model self-references — "Sonnet pesquisou", "agente de pesquisa atualizou"
+
+**Smell test for Histórico entries:** if you remove the entry, does the reader lose business context they'd otherwise have to ask about? If no, delete it. Many pages don't need a Histórico section at all.
+
+**Smell test for the rest of the body:** read the page as if you'd never seen it before. Anything that talks *about the page itself* (its versions, its corrections, its refactorings) is noise — strip it. The page is what it says, not how it got there.
+
 ## Tool preferences
 
 Ordered by preference. Always try the cheapest tool that can answer the question — escalate only when necessary.
