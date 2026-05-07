@@ -1198,6 +1198,17 @@ func runPageMove(args []string, stdout, stderr io.Writer) (int, error) {
 			i++
 		case "--dry-run":
 			dryRun = true
+		case "-h", "--help":
+			fmt.Fprintln(stdout, "page move — rename and/or reparent a Confluence page (alias: page rename).")
+			fmt.Fprintln(stdout, "")
+			fmt.Fprintln(stdout, "  --page-id ID           page to move (required)")
+			fmt.Fprintln(stdout, "  --parent-id NEW_PARENT new parent page id")
+			fmt.Fprintln(stdout, "  --title NEW_TITLE      new title")
+			fmt.Fprintln(stdout, "  --message MSG          version comment")
+			fmt.Fprintln(stdout, "  --dry-run              show what would change without writing")
+			fmt.Fprintln(stdout, "")
+			fmt.Fprintln(stdout, "At least one of --parent-id or --title is required. Body is preserved.")
+			return exitOK, nil
 		default:
 			fmt.Fprintln(stderr, "unknown flag:", a)
 			return exitInputErr, errInvalidUsage
@@ -1252,6 +1263,14 @@ func runPageDelete(args []string, stdout, stderr io.Writer) (int, error) {
 			i++
 		case "--yes":
 			confirmed = true
+		case "-h", "--help":
+			fmt.Fprintln(stdout, "page delete — soft-delete a Confluence page (alias: page trash).")
+			fmt.Fprintln(stdout, "")
+			fmt.Fprintln(stdout, "  --page-id ID    page to delete (required)")
+			fmt.Fprintln(stdout, "  --yes           required to confirm (otherwise rejected)")
+			fmt.Fprintln(stdout, "")
+			fmt.Fprintln(stdout, "Page goes to Confluence trash and is restorable from there.")
+			return exitOK, nil
 		default:
 			fmt.Fprintln(stderr, "unknown flag:", a)
 			return exitInputErr, errInvalidUsage
