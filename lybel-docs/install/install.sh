@@ -2,7 +2,7 @@
 # install.sh — POSIX shell installer for lybel-docs (Linux + macOS)
 #
 # Usage (one-liner):
-#   curl -fsSL https://raw.githubusercontent.com/lybel-app/skills/main/skills/lybel-docs/install/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/lybel-app/skills/main/lybel-docs/install/install.sh | bash
 #
 # Environment variables (all optional):
 #   LYBEL_DOCS_REPO   GitHub "owner/repo" (default: lybel-app/skills)

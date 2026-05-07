@@ -27,10 +27,10 @@ vendor/
 /bin/
 /dist/
 /build/
-skills/*/cli/bin/
-skills/*/cli/dist/
-skills/*/bin/lybel-docs
-skills/*/bin/lybel-docs.exe
+*/cli/bin/
+*/cli/dist/
+*/bin/lybel-docs
+*/bin/lybel-docs.exe
 release-assets/
 
 # ============================================================

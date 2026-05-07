@@ -404,11 +404,11 @@ lybel-docs setup --check      # exit 0 = creds valid
 
 Exit codes for `setup --check`:
 - `0` — credentials valid → proceed
-- `1` — no credentials file → run `lybel-docs setup` interactively (or guide the user through Step 5 of `skills/lybel-docs/cli/README.md`)
+- `1` — no credentials file → run `lybel-docs setup` interactively (or guide the user through Step 5 of `lybel-docs/cli/README.md`)
 - `2` — credentials invalid (token revoked or mistyped) → ask the user to regenerate the token at `https://id.atlassian.com/manage-profile/security/api-tokens` and re-run setup
 - `3` — network error → retry once; if it persists, surface the error to the user and fall back to MCP
 
-If the binary is absent entirely, fall back to MCP for the current request and tell the user how to install: `skills/lybel-docs/cli/README.md` has the one-shot install URL.
+If the binary is absent entirely, fall back to MCP for the current request and tell the user how to install: `lybel-docs/cli/README.md` has the one-shot install URL.
 
 ## Updating the skill — "atualiza a skill" / "tem versão nova?"
 

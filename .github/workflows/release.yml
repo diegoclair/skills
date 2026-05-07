@@ -16,16 +16,16 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version-file: skills/lybel-docs/cli/go.mod
+          go-version-file: lybel-docs/cli/go.mod
           cache: true
-          cache-dependency-path: skills/lybel-docs/cli/go.sum
+          cache-dependency-path: lybel-docs/cli/go.sum
 
       - name: Run tests
-        working-directory: skills/lybel-docs/cli
+        working-directory: lybel-docs/cli
         run: make test
 
       - name: Cross-compile binaries
-        working-directory: skills/lybel-docs/cli
+        working-directory: lybel-docs/cli
         run: make build-all VERSION=${{ github.ref_name }}
 
       - name: Package platform ZIPs
@@ -46,11 +46,11 @@ jobs:
             IFS=':' read -r platform src_bin dst_bin <<< "$entry"
             stage="$(mktemp -d)"
 
-            cp skills/lybel-docs/SKILL.md "$stage/SKILL.md"
-            cp -r skills/lybel-docs/reference "$stage/reference"
+            cp lybel-docs/SKILL.md "$stage/SKILL.md"
+            cp -r lybel-docs/reference "$stage/reference"
 
             mkdir -p "$stage/bin"
-            cp "skills/lybel-docs/cli/dist/$src_bin" "$stage/bin/$dst_bin"
+            cp "lybel-docs/cli/dist/$src_bin" "$stage/bin/$dst_bin"
             chmod +x "$stage/bin/$dst_bin"
 
             (cd "$stage" && zip -r "$GITHUB_WORKSPACE/release-assets/lybel-docs-$platform.zip" . -q)

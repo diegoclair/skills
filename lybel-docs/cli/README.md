@@ -21,13 +21,13 @@ Read the `Platform:` field in your environment context.
 **Linux / macOS:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/lybel-app/skills/main/skills/lybel-docs/install/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/lybel-app/skills/main/lybel-docs/install/install.sh | bash
 ```
 
 **Windows:**
 
 ```powershell
-iwr -useb https://raw.githubusercontent.com/lybel-app/skills/main/skills/lybel-docs/install/install.ps1 | iex
+iwr -useb https://raw.githubusercontent.com/lybel-app/skills/main/lybel-docs/install/install.ps1 | iex
 ```
 
 The script downloads the correct binary, places it at
@@ -172,13 +172,13 @@ Conduct entirely in chat — no terminal commands needed from the user.
 **Linux / macOS:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/lybel-app/skills/main/skills/lybel-docs/install/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/lybel-app/skills/main/lybel-docs/install/install.sh | bash
 ```
 
 **Windows:**
 
 ```powershell
-iwr -useb https://raw.githubusercontent.com/lybel-app/skills/main/skills/lybel-docs/install/install.ps1 | iex
+iwr -useb https://raw.githubusercontent.com/lybel-app/skills/main/lybel-docs/install/install.ps1 | iex
 ```
 
 After the script finishes, configure your credentials:
@@ -241,13 +241,13 @@ network error.
 
 ### Repository layout
 
-This is the **CLI source dir** (`skills/lybel-docs/cli/`). The skill payload
-lives one level up at `skills/lybel-docs/` (SKILL.md + reference/), and the
-end-user install scripts live at `skills/lybel-docs/install/`. See the
-[root README](../../../README.md) for the full repo convention.
+This is the **CLI source dir** (`lybel-docs/cli/`). The skill payload
+lives one level up at `lybel-docs/` (SKILL.md + reference/), and the
+end-user install scripts live at `lybel-docs/install/`. See the
+[root README](../../README.md) for the full repo convention.
 
 ```
-skills/lybel-docs/
+lybel-docs/
 ├── SKILL.md                Skill entrypoint (read by Claude at runtime)
 ├── reference/              Skill reference docs (templates, taxonomy, workflows)
 ├── install/

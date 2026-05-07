@@ -19,7 +19,7 @@ Hoje só temos uma skill, mas o repo foi desenhado para crescer: próximas candi
 
 | Skill | Resumo | Docs |
 |---|---|---|
-| **`lybel-docs`** | Assistente da base de conhecimento Confluence. Busca, cria e atualiza páginas no espaço Lybel em linguagem natural. Usa um CLI Go local (`page digest`, `page apply`, `search`) que retorna sub-KB em vez do ADF inteiro — drasticamente mais barato em tokens que o MCP Atlassian puro. MCP fica como fallback. | [SKILL.md](./skills/lybel-docs/SKILL.md) |
+| **`lybel-docs`** | Assistente da base de conhecimento Confluence. Busca, cria e atualiza páginas no espaço Lybel em linguagem natural. Usa um CLI Go local (`page digest`, `page apply`, `search`) que retorna sub-KB em vez do ADF inteiro — drasticamente mais barato em tokens que o MCP Atlassian puro. MCP fica como fallback. | [SKILL.md](./lybel-docs/SKILL.md) |
 
 ---
 
@@ -32,7 +32,7 @@ A `lybel-docs` é uma skill **timeless**: o repo não guarda dados específicos 
 - **Nenhum dado específico vive no repo** — por isso é safe deixar público no GitHub.
 - Os arquivos em `reference/` são apenas **fallback** quando o Confluence está inacessível.
 
-**Para customizar pra outra empresa**: troque `cloudId` e `pageId` da Home no frontmatter e no corpo de [`skills/lybel-docs/SKILL.md`](./skills/lybel-docs/SKILL.md). Crie a Home no seu próprio Confluence seguindo o mesmo padrão (taxonomia + aliases + index).
+**Para customizar pra outra empresa**: troque `cloudId` e `pageId` da Home no frontmatter e no corpo de [`lybel-docs/SKILL.md`](./lybel-docs/SKILL.md). Crie a Home no seu próprio Confluence seguindo o mesmo padrão (taxonomia + aliases + index).
 
 ## Por que CLI em vez de só MCP
 
@@ -69,12 +69,12 @@ A IA vai ler este README, detectar seu OS, rodar o instalador, e te ajudar a ger
 
    **macOS/Linux:**
    ```bash
-   curl -fsSL https://raw.githubusercontent.com/lybel-app/skills/main/skills/lybel-docs/install/install.sh | bash
+   curl -fsSL https://raw.githubusercontent.com/lybel-app/skills/main/lybel-docs/install/install.sh | bash
    ```
 
    **Windows (PowerShell):**
    ```powershell
-   iwr -useb https://raw.githubusercontent.com/lybel-app/skills/main/skills/lybel-docs/install/install.ps1 | iex
+   iwr -useb https://raw.githubusercontent.com/lybel-app/skills/main/lybel-docs/install/install.ps1 | iex
    ```
 
 3. **Configure credenciais Atlassian:**
@@ -94,15 +94,15 @@ A IA vai ler este README, detectar seu OS, rodar o instalador, e te ajudar a ger
 ### Opção C — caminho dev (clone do repo)
 
 ```bash
-# 1. Clone (cria diretório `skills/`)
+# 1. Clone
 git clone https://github.com/lybel-app/skills.git lybel-skills
 cd lybel-skills
 
 # 2. Symlink da skill para o diretório do Claude
-ln -s "$(pwd)/skills/lybel-docs" ~/.claude/skills/lybel-docs
+ln -s "$(pwd)/lybel-docs" ~/.claude/skills/lybel-docs
 
 # 3. (Recomendado) Build do CLI Go — habilita digest/apply/search e reduz custo de tokens
-cd skills/lybel-docs/cli && make install
+cd lybel-docs/cli && make install
 # (Build padrão instala em ~/.claude/skills/lybel-docs/bin/lybel-docs)
 # Configurar credenciais Atlassian:
 lybel-docs setup
@@ -132,12 +132,12 @@ No Windows, troque o `ln -s` por um **diretório junction** (`mklink /J`) ou cop
 
 **macOS / Linux:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/lybel-app/skills/main/skills/lybel-docs/install/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/lybel-app/skills/main/lybel-docs/install/install.sh | bash
 ```
 
 **Windows (PowerShell):**
 ```powershell
-iwr -useb https://raw.githubusercontent.com/lybel-app/skills/main/skills/lybel-docs/install/install.ps1 | iex
+iwr -useb https://raw.githubusercontent.com/lybel-app/skills/main/lybel-docs/install/install.ps1 | iex
 ```
 
 O instalador baixa o último release, descompacta em `~/.claude/skills/lybel-docs/` (ou `%USERPROFILE%\.claude\skills\lybel-docs\` no Windows), e adiciona o binário ao PATH.
@@ -262,41 +262,40 @@ Claude: Página "Nubank — Parceria" (última atualização: 2026-04-12):
 
 ### Estrutura do repo (convenção)
 
-Cada skill é **self-contained** — tudo relacionado a ela vive em `skills/<nome>/`:
+Cada skill é **self-contained** — vive numa pasta no root do repo, com nome igual ao da skill:
 
 ```
 lybel-skills/
-├── skills/
-│   └── <nome-da-skill>/
-│       ├── SKILL.md           # Frontmatter + instruções da skill
-│       ├── reference/         # Docs auxiliares (templates, taxonomia, workflows…)
-│       ├── cli/               # (opcional) Código-fonte do CLI Go que a skill usa
-│       │   ├── main.go
-│       │   ├── adf/           # pacotes Go
-│       │   ├── setup/
-│       │   ├── go.mod
-│       │   ├── Makefile       # build, test, install
-│       │   └── README.md      # docs do CLI
-│       ├── install/           # (opcional) Scripts de instalação pra usuário final
-│       │   ├── install.sh     # macOS/Linux
-│       │   └── install.ps1    # Windows
-│       └── bin/               # Binário compilado (gitignored — gerado por make install)
+├── <nome-da-skill>/
+│   ├── SKILL.md           # Frontmatter + instruções da skill
+│   ├── reference/         # Docs auxiliares (templates, taxonomia, workflows…)
+│   ├── cli/               # (opcional) Código-fonte do CLI Go que a skill usa
+│   │   ├── main.go
+│   │   ├── adf/           # pacotes Go
+│   │   ├── setup/
+│   │   ├── go.mod
+│   │   ├── Makefile       # build, test, install
+│   │   └── README.md      # docs do CLI
+│   ├── install/           # (opcional) Scripts de instalação pra usuário final
+│   │   ├── install.sh     # macOS/Linux
+│   │   └── install.ps1    # Windows
+│   └── bin/               # Binário compilado (gitignored — gerado por make install)
 ├── .github/workflows/
-│   └── release.yml            # Tag v* dispara build cross-platform + GitHub Release
+│   └── release.yml        # Tag v* dispara build cross-platform + GitHub Release
 ├── LICENSE
-└── README.md                  # Este arquivo
+└── README.md              # Este arquivo
 ```
 
 **Regras da convenção:**
 - **Skills sem CLI** simplesmente não têm `cli/`. Funciona normal — `SKILL.md` + `reference/` é o mínimo.
-- **Binários** são gerados por `make install` dentro de `skills/<nome>/cli/` — instalam direto em `~/.claude/skills/<nome>/bin/` (caminho de runtime do Claude). O diretório `bin/` no repo é gitignored.
+- **Binários** são gerados por `make install` dentro de `<nome>/cli/` — instalam direto em `~/.claude/skills/<nome>/bin/` (caminho de runtime do Claude). O diretório `bin/` no repo é gitignored.
 - **Release assets** (ZIPs cross-platform) são gerados pelo CI em runtime, **não vivem no repo**.
 
 ### Como adicionar uma skill nova
 
-1. Cria `skills/<nome-da-skill>/SKILL.md` seguindo o formato de [skills.md](https://docs.claude.com/en/docs/claude-code/skills).
-2. Adiciona arquivos de referência em `skills/<nome>/reference/`.
-3. Se a skill precisa de CLI, cria `skills/<nome>/cli/` com `main.go` + `Makefile`. Se for só prompts/MCP, pula.
+1. Cria `<nome-da-skill>/SKILL.md` seguindo o formato de [skills.md](https://docs.claude.com/en/docs/claude-code/skills).
+2. Adiciona arquivos de referência em `<nome>/reference/`.
+3. Se a skill precisa de CLI, cria `<nome>/cli/` com `main.go` + `Makefile`. Se for só prompts/MCP, pula.
 4. Testa localmente via symlink (veja [Opção C](#opção-c--caminho-dev-clone-do-repo)).
 5. Abre PR. Após merge, criar tag `vX.Y.Z` dispara o workflow de release que monta os ZIPs cross-platform e publica no GitHub Releases automaticamente.
 
