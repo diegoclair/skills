@@ -435,6 +435,66 @@ func TestPageCreate_MissingTitle(t *testing.T) {
 	}
 }
 
+func TestPageMove_MissingPageID(t *testing.T) {
+	_, errOut, code := runCLI(t, "page", "move", "--title", "x")
+	if code == 0 {
+		t.Fatal("expected non-zero exit when --page-id missing")
+	}
+	if !strings.Contains(errOut, "--page-id") {
+		t.Errorf("expected --page-id mention in error: %s", errOut)
+	}
+}
+
+func TestPageMove_RequiresParentOrTitle(t *testing.T) {
+	_, errOut, code := runCLI(t, "page", "move", "--page-id", "123")
+	if code == 0 {
+		t.Fatal("expected non-zero exit when neither --parent-id nor --title given")
+	}
+	if !strings.Contains(errOut, "--parent-id") || !strings.Contains(errOut, "--title") {
+		t.Errorf("expected both --parent-id and --title in error: %s", errOut)
+	}
+}
+
+func TestPageRename_AliasOfMove(t *testing.T) {
+	_, errOut, code := runCLI(t, "page", "rename", "--page-id", "123")
+	if code == 0 {
+		t.Fatal("expected non-zero exit when neither --parent-id nor --title given")
+	}
+	if !strings.Contains(errOut, "page move:") {
+		t.Errorf("expected 'page move:' (rename routes to runPageMove): %s", errOut)
+	}
+}
+
+func TestPageDelete_MissingPageID(t *testing.T) {
+	_, errOut, code := runCLI(t, "page", "delete", "--yes")
+	if code == 0 {
+		t.Fatal("expected non-zero exit when --page-id missing")
+	}
+	if !strings.Contains(errOut, "--page-id") {
+		t.Errorf("expected --page-id mention in error: %s", errOut)
+	}
+}
+
+func TestPageDelete_RequiresYes(t *testing.T) {
+	_, errOut, code := runCLI(t, "page", "delete", "--page-id", "123")
+	if code == 0 {
+		t.Fatal("expected non-zero exit when --yes missing")
+	}
+	if !strings.Contains(errOut, "--yes") {
+		t.Errorf("expected --yes confirmation hint in error: %s", errOut)
+	}
+}
+
+func TestPageTrash_AliasOfDelete(t *testing.T) {
+	_, errOut, code := runCLI(t, "page", "trash", "--page-id", "123")
+	if code == 0 {
+		t.Fatal("expected non-zero exit when --yes missing")
+	}
+	if !strings.Contains(errOut, "page delete:") {
+		t.Errorf("expected 'page delete:' (trash routes to runPageDelete): %s", errOut)
+	}
+}
+
 // ── page digest / apply / search validation ────────────────────────────────────
 
 func TestPageDigest_MissingPageID(t *testing.T) {

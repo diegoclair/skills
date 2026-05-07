@@ -399,6 +399,85 @@ func (c *ConfluenceClient) UpdatePage(pageID, title string, versionNumber int, a
 	return nil
 }
 
+// MovePage moves a page to a new parent and/or renames it. The body is
+// preserved (refetched and re-PUT) since the v2 PUT requires it.
+// If newParentID is "", parent is unchanged. If newTitle is "", title is
+// unchanged. At least one must be non-empty.
+func (c *ConfluenceClient) MovePage(pageID, newParentID, newTitle, versionMessage string, dryRun bool, dryRunOut io.Writer) error {
+	if newParentID == "" && newTitle == "" {
+		return fmt.Errorf("MovePage requires --parent-id and/or --title")
+	}
+
+	meta, err := c.GetPage(pageID, "atlas_doc_format")
+	if err != nil {
+		return fmt.Errorf("fetch current page: %w", err)
+	}
+
+	title := newTitle
+	if title == "" {
+		title = meta.Title
+	}
+	versionNumber := meta.Version.Number + 1
+	bodyValue := meta.Body.AtlasDocFormat.Value
+
+	if dryRun {
+		fmt.Fprintf(dryRunOut, "[dry-run] Would move/rename page ID %s:\n", pageID)
+		fmt.Fprintf(dryRunOut, "  Old title: %s\n", meta.Title)
+		fmt.Fprintf(dryRunOut, "  New title: %s\n", title)
+		if newParentID != "" {
+			fmt.Fprintf(dryRunOut, "  New parent: %s\n", newParentID)
+		} else {
+			fmt.Fprintf(dryRunOut, "  Parent: unchanged\n")
+		}
+		fmt.Fprintf(dryRunOut, "  Version: %d\n", versionNumber)
+		if versionMessage != "" {
+			fmt.Fprintf(dryRunOut, "  Message: %s\n", versionMessage)
+		}
+		fmt.Fprintf(dryRunOut, "[dry-run] No changes made.\n")
+		return nil
+	}
+
+	payload := map[string]any{
+		"id":     pageID,
+		"status": "current",
+		"title":  title,
+		"version": map[string]any{
+			"number":  versionNumber,
+			"message": versionMessage,
+		},
+		"body": map[string]any{
+			"representation": "atlas_doc_format",
+			"value":          bodyValue,
+		},
+	}
+	if newParentID != "" {
+		payload["parentId"] = newParentID
+	}
+
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal move payload: %w", err)
+	}
+
+	path := fmt.Sprintf("/api/v2/pages/%s", pageID)
+	_, _, err = c.doRequest("PUT", path, bytes.NewReader(payloadBytes))
+	if err != nil {
+		return fmt.Errorf("move page %s: %w", pageID, err)
+	}
+	return nil
+}
+
+// DeletePage trashes a page (soft delete). The page can be restored from
+// the trash within the Confluence retention window.
+func (c *ConfluenceClient) DeletePage(pageID string) error {
+	path := fmt.Sprintf("/api/v2/pages/%s", pageID)
+	_, _, err := c.doRequest("DELETE", path, nil)
+	if err != nil {
+		return fmt.Errorf("delete page %s: %w", pageID, err)
+	}
+	return nil
+}
+
 // CreatePage creates a new page under the given parent in the given space.
 // Content can be provided as ADF (adfBody != nil) or left empty.
 func (c *ConfluenceClient) CreatePage(spaceID, parentID, title string, adfBody *Node) (*PageCreateResult, error) {

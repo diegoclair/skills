@@ -257,6 +257,35 @@ For most "qual o status" questions, the digest is enough — it shows the page's
 2. Confirm template (Advisor Sheet, Investor Sheet, Partner Sheet).
 3. Create under the correct parent (Workflow 3). Always confirm location before.
 
+### 8. Reorganize — "renomeia X" / "move X pra dentro de Y" / "deleta X"
+
+The `page move` and `page delete` verbs handle structural changes without touching the page body. Use them when the user asks to rename, reparent, or trash a page. **Always confirm the target with the user before deleting** — even soft delete (Confluence trash is restorable, but the user should still authorize).
+
+```
+# Rename only (parent unchanged)
+lybel-docs page move --page-id <id> --title "New Title" --message "rename: reason"
+
+# Reparent only (title unchanged)
+lybel-docs page move --page-id <id> --parent-id <newParentId> --message "move under X"
+
+# Both at once (single PUT)
+lybel-docs page move --page-id <id> --parent-id <newParentId> --title "New Title"
+
+# Preview without writing
+lybel-docs page move --page-id <id> --title "..." --dry-run
+
+# Soft-delete (restorable from Confluence trash)
+lybel-docs page delete --page-id <id> --yes
+```
+
+**How move works under the hood:** v2 PUT requires the body, so `page move` GETs the current ADF and re-PUTs it with the new `parentId` / `title`. Body is preserved byte-for-byte; macros stay intact. The full ADF never enters the conversation context.
+
+**When NOT to use:**
+- To change the **content** of a page → use `page apply` (section/table edit) or `page rewrite` / `page upload` (full body replacement).
+- To change the body **and** rename in one shot → use `page upload --title "..."` (you already have a new ADF) instead of two separate calls.
+
+**Bulk reorganizations:** when reparenting multiple pages or doing a multi-step restructure (rename + move + delete cascade), prefer running each `page move` / `page delete` as its own atomic command. The CLI returns a one-line JSON status per call (~50 bytes), so even 10–20 calls stay cheap. Confirm the new tree with `page children` afterwards.
+
 ## Editorial patterns for Lybel pages
 
 Every **decision**, **proposal**, **strategy**, or **spec** page must follow two conventions. Index pages, reference pages and glossaries can skip them.
@@ -313,6 +342,9 @@ Ordered by preference. Always try the cheapest tool that can answer the question
 | Update a page (single section) | `page apply` | `page get` + `edit` + `page upload` | MCP `getConfluencePage(adf)` + manual + `updateConfluencePage(adf)` |
 | Update a page (table row) | `page apply --table-add-row` / `--table-remove-row` | `page get` + `edit --table-*` + `page upload` | — |
 | Create a new page | `page create --markdown` | `adf` to convert + MCP `createConfluencePage(adf)` | MCP `createConfluencePage(markdown)` |
+| Rename a page | `page move --page-id ID --title "New Title"` | `page get` + `page upload --title "..."` | MCP `updateConfluencePage` |
+| Move a page to a new parent | `page move --page-id ID --parent-id NEW_PARENT` | — | MCP `updateConfluencePage` |
+| Soft-delete a page | `page delete --page-id ID --yes` | — | MCP `deleteConfluencePage` |
 | Build rich ADF from markdown | `adf` (with `[TOC]`, `:::expand`, `:::warning` extensions) | — | — |
 
 **Why CLI first:** the MCP returns the full ADF body of every page (10–40 KB). The CLI returns digests (~500 bytes), single-section slices (~hundreds of bytes), TSV rows (~150 bytes per result), or one-line status payloads. Across a multi-edit session the difference is usually 10–50× in token cost.

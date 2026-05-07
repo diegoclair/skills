@@ -10,6 +10,8 @@ This file defines deterministic flows. When the user asks for one of the actions
 - **"Qual o status de X?"** is usually answered by the `Status:` line in `page digest` output alone (Lybel pages prefix titles with status emojis 🟢🟡🟠🔴🔵⚪✅ which the digest parses).
 - **Create a page:** `lybel-docs page create --space-id 131352 --parent-id PID --title T --markdown FILE`. Fallback: MCP `createConfluencePage`.
 - **Update a section:** `lybel-docs page apply --page-id ID --replace-section "Heading" --fragment FILE` (atomic GET→edit→PUT with 409 retry). Fallback: `page get` + `edit` + `page upload`. Last resort: MCP `getConfluencePage(adf)` + `updateConfluencePage(adf)`.
+- **Rename / move a page:** `lybel-docs page move --page-id ID [--parent-id NEW_PARENT] [--title NEW_TITLE]` — body preserved, single PUT. At least one of `--parent-id` / `--title` is required.
+- **Delete a page:** `lybel-docs page delete --page-id ID --yes` — soft delete (Confluence trash, restorable). Always confirm with the user before issuing.
 - **Search:** `lybel-docs search "term" --limit 5`. Fallback: MCP `searchConfluenceUsingCql`.
 - **PageIds of parents (categories, sub-categories, departments)** come from the Home (Page ID Index) — always run Workflow 0 before other workflows in the session.
 

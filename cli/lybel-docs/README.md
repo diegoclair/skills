@@ -150,6 +150,9 @@ Conduct entirely in chat — no terminal commands needed from the user.
   only sees a tiny status line. Supports `--append`, `--insert-after/before`,
   `--replace-section`, `--delete-section`, `--table-add-row`,
   `--table-remove-row`.
+- **Page lifecycle** (`page move`, `page delete`): rename a page, reparent it
+  under a new ancestor, or trash it (soft delete, restorable). Move is a
+  single command that handles rename + reparent in one PUT.
 - **CQL search** (`search`) returning compact TSV (id, title, url, excerpt)
   instead of MCP's verbose JSON.
 - Converts extended Markdown to Atlassian Document Format (ADF) JSON, including
@@ -207,6 +210,8 @@ make install   # builds and copies to ../../skills/lybel-docs/bin/lybel-docs
 | `page apply` | Atomic page update: GET ADF → apply op → PUT, with automatic 409-conflict retry. Operations: `--append`, `--insert-after`, `--insert-before`, `--replace-section`, `--delete-section`, `--table-add-row`, `--table-remove-row` |
 | `page upload` | Push a local ADF file to an existing page |
 | `page create` | Create a new page (markdown or ADF source) |
+| `page move` | Rename and/or reparent a page. Flags: `--page-id ID` plus at least one of `--parent-id NEW_PARENT` / `--title NEW_TITLE`. Body is preserved (refetched and re-PUT, since v2 PUT requires it). Alias: `page rename` |
+| `page delete` | Soft-delete a page (sends to Confluence trash, restorable). Requires `--yes` to confirm. Alias: `page trash` |
 | `page children` | List direct children of a page (TSV: id, title). Old name `list-children` still works as alias |
 | `search` | CQL search via the v1 API. TSV output (`pageId\ttitle\turl\texcerpt`). Defaults to `space="lybel" AND type="page"` |
 | `home` | Local Home-page cache. Verbs: `--refresh` (force GET + cache), `--status` (metadata), `--show` (text), `--query "X"` (grep), `--digest`. Cache at `~/.cache/lybel-docs/home.json`. Read-only — writes always GET fresh ADF first |
