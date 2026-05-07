@@ -32,7 +32,7 @@ func TestResolveCreds_EnvVars(t *testing.T) {
 
 func TestResolveCreds_ConfigFile(t *testing.T) {
 	dir := t.TempDir()
-	cfgDir := filepath.Join(dir, ".config", "lybel-docs")
+	cfgDir := filepath.Join(dir, ".config", "confluence-docs")
 	if err := os.MkdirAll(cfgDir, 0700); err != nil {
 		t.Fatal(err)
 	}

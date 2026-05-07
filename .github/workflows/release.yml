@@ -16,16 +16,16 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version-file: lybel-docs/cli/go.mod
+          go-version-file: confluence-docs/cli/go.mod
           cache: true
-          cache-dependency-path: lybel-docs/cli/go.sum
+          cache-dependency-path: confluence-docs/cli/go.sum
 
       - name: Run tests
-        working-directory: lybel-docs/cli
+        working-directory: confluence-docs/cli
         run: make test
 
       - name: Cross-compile binaries
-        working-directory: lybel-docs/cli
+        working-directory: confluence-docs/cli
         run: make build-all VERSION=${{ github.ref_name }}
 
       - name: Package platform ZIPs
@@ -35,25 +35,25 @@ jobs:
 
           # platform : source binary name in dist/ : destination name in ZIP
           entries=(
-            "darwin-amd64:lybel-docs-darwin-amd64:lybel-docs"
-            "darwin-arm64:lybel-docs-darwin-arm64:lybel-docs"
-            "linux-amd64:lybel-docs-linux-amd64:lybel-docs"
-            "linux-arm64:lybel-docs-linux-arm64:lybel-docs"
-            "windows-amd64:lybel-docs-windows-amd64.exe:lybel-docs.exe"
+            "darwin-amd64:confluence-docs-darwin-amd64:confluence-docs"
+            "darwin-arm64:confluence-docs-darwin-arm64:confluence-docs"
+            "linux-amd64:confluence-docs-linux-amd64:confluence-docs"
+            "linux-arm64:confluence-docs-linux-arm64:confluence-docs"
+            "windows-amd64:confluence-docs-windows-amd64.exe:confluence-docs.exe"
           )
 
           for entry in "${entries[@]}"; do
             IFS=':' read -r platform src_bin dst_bin <<< "$entry"
             stage="$(mktemp -d)"
 
-            cp lybel-docs/SKILL.md "$stage/SKILL.md"
-            cp -r lybel-docs/reference "$stage/reference"
+            cp confluence-docs/SKILL.md "$stage/SKILL.md"
+            cp -r confluence-docs/reference "$stage/reference"
 
             mkdir -p "$stage/bin"
-            cp "lybel-docs/cli/dist/$src_bin" "$stage/bin/$dst_bin"
+            cp "confluence-docs/cli/dist/$src_bin" "$stage/bin/$dst_bin"
             chmod +x "$stage/bin/$dst_bin"
 
-            (cd "$stage" && zip -r "$GITHUB_WORKSPACE/release-assets/lybel-docs-$platform.zip" . -q)
+            (cd "$stage" && zip -r "$GITHUB_WORKSPACE/release-assets/confluence-docs-$platform.zip" . -q)
             rm -rf "$stage"
           done
 

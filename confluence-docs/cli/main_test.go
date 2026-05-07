@@ -32,8 +32,8 @@ func TestVersion(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("want exit 0, got %d", code)
 	}
-	if !strings.Contains(out, "lybel-docs") {
-		t.Errorf("want 'lybel-docs' in output, got %q", out)
+	if !strings.Contains(out, "confluence-docs") {
+		t.Errorf("want 'confluence-docs' in output, got %q", out)
 	}
 }
 
@@ -361,7 +361,7 @@ func TestUpdate_HelpFlag(t *testing.T) {
 	if !strings.Contains(out, "--check") {
 		t.Errorf("expected --check in help: %s", out)
 	}
-	if !strings.Contains(out, "lybel-docs update") {
+	if !strings.Contains(out, "confluence-docs update") {
 		t.Errorf("expected command name in help: %s", out)
 	}
 }

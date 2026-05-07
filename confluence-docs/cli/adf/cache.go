@@ -30,15 +30,15 @@ type HomeCache struct {
 }
 
 // HomeCachePath returns the platform-appropriate path to the Home cache file:
-//   - Linux:   $XDG_CACHE_HOME/lybel-docs/home.json (or ~/.cache/lybel-docs/home.json)
-//   - macOS:   ~/Library/Caches/lybel-docs/home.json
-//   - Windows: %LocalAppData%/lybel-docs/home.json
+//   - Linux:   $XDG_CACHE_HOME/confluence-docs/home.json (or ~/.cache/confluence-docs/home.json)
+//   - macOS:   ~/Library/Caches/confluence-docs/home.json
+//   - Windows: %LocalAppData%/confluence-docs/home.json
 func HomeCachePath() (string, error) {
 	dir, err := os.UserCacheDir()
 	if err != nil {
 		return "", fmt.Errorf("resolve cache dir: %w", err)
 	}
-	return filepath.Join(dir, "lybel-docs", "home.json"), nil
+	return filepath.Join(dir, "confluence-docs", "home.json"), nil
 }
 
 // LoadHomeCache reads and parses the cache file. Returns os.ErrNotExist (wrapped)

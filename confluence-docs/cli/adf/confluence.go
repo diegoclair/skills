@@ -3,11 +3,11 @@
 // Auth is resolved in order:
 //  1. Explicit token/email passed to NewClient
 //  2. $ATLASSIAN_API_TOKEN and $ATLASSIAN_EMAIL env vars
-//  3. Platform config dir / lybel-docs / credentials (key=value file)
-//     Linux:   $XDG_CONFIG_HOME/lybel-docs/credentials
-//     macOS:   ~/Library/Application Support/lybel-docs/credentials
-//     Windows: %AppData%\lybel-docs\credentials
-//     (legacy ~/.config/lybel-docs/credentials is read with a warning)
+//  3. Platform config dir / confluence-docs / credentials (key=value file)
+//     Linux:   $XDG_CONFIG_HOME/confluence-docs/credentials
+//     macOS:   ~/Library/Application Support/confluence-docs/credentials
+//     Windows: %AppData%\confluence-docs\credentials
+//     (legacy ~/.config/confluence-docs/credentials is read with a warning)
 //
 // Cloud subdomain is resolved in order:
 //  1. Explicit cloud passed to NewClient
@@ -31,24 +31,24 @@ import (
 
 // configPath returns the platform-appropriate credentials file path via
 // os.UserConfigDir(), which resolves to:
-//   - Linux:   $XDG_CONFIG_HOME/lybel-docs/credentials (or ~/.config/…)
-//   - macOS:   ~/Library/Application Support/lybel-docs/credentials
-//   - Windows: %AppData%\lybel-docs\credentials
+//   - Linux:   $XDG_CONFIG_HOME/confluence-docs/credentials (or ~/.config/…)
+//   - macOS:   ~/Library/Application Support/confluence-docs/credentials
+//   - Windows: %AppData%\confluence-docs\credentials
 func configPath() (string, error) {
 	dir, err := os.UserConfigDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "lybel-docs", "credentials"), nil
+	return filepath.Join(dir, "confluence-docs", "credentials"), nil
 }
 
-// legacyConfigPath returns the pre-migration path ~/.config/lybel-docs/credentials.
+// legacyConfigPath returns the pre-migration path ~/.config/confluence-docs/credentials.
 func legacyConfigPath() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".config", "lybel-docs", "credentials"), nil
+	return filepath.Join(home, ".config", "confluence-docs", "credentials"), nil
 }
 
 // ConfluenceCreds holds authentication credentials for the Confluence API.
@@ -171,7 +171,7 @@ func ResolveCreds(email, token string) (ConfluenceCreds, error) {
 	}
 
 	// Build a helpful path hint using the actual platform config dir.
-	cfgPathHint := "~/.config/lybel-docs/credentials"
+	cfgPathHint := "~/.config/confluence-docs/credentials"
 	if p, err := configPath(); err == nil {
 		cfgPathHint = p
 	}
@@ -183,14 +183,14 @@ func ResolveCreds(email, token string) (ConfluenceCreds, error) {
 			"  3. File:    %s\n"+
 			"              email=you@example.com\n"+
 			"              token=<api-token>\n"+
-			"Run `lybel-docs setup` to create this file interactively.\n"+
+			"Run `confluence-docs setup` to create this file interactively.\n"+
 			"See SETUP.md for how to generate an API token.",
 		cfgPathHint,
 	)
 }
 
 // readCredsFile parses the platform credentials file (key=value format).
-// Falls back to the legacy ~/.config/lybel-docs/credentials with a warning
+// Falls back to the legacy ~/.config/confluence-docs/credentials with a warning
 // printed to stderr if the new path does not exist but the old one does.
 // On Linux the two paths are identical so no fallback is attempted.
 func readCredsFile() (ConfluenceCreds, error) {
@@ -207,7 +207,7 @@ func readCredsFile() (ConfluenceCreds, error) {
 				// Print warning to stderr. We use os.Stderr directly here because
 				// readCredsFile has no io.Writer param (keeping the existing API).
 				fmt.Fprintf(os.Stderr,
-					"warning: credentials found at legacy path %s — run `lybel-docs setup` to migrate to %s\n",
+					"warning: credentials found at legacy path %s — run `confluence-docs setup` to migrate to %s\n",
 					legacyPath, newPath)
 				data = legacyData
 				readErr = nil

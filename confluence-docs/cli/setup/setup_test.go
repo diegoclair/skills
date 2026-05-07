@@ -45,7 +45,7 @@ func okUserBody(displayName, accountID string) string {
 // writeTempCreds writes a credentials file inside dir and returns its path.
 func writeTempCreds(t *testing.T, dir, email, token string) string {
 	t.Helper()
-	cfgDir := filepath.Join(dir, "lybel-docs")
+	cfgDir := filepath.Join(dir, "confluence-docs")
 	if err := os.MkdirAll(cfgDir, 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func overrideConfigDir(t *testing.T, dir string) {
 		t.Setenv("HOME", dir)
 	default: // linux and others
 		t.Setenv("XDG_CONFIG_HOME", dir)
-		// Also override HOME so the legacy ~/.config/lybel-docs path resolves
+		// Also override HOME so the legacy ~/.config/confluence-docs path resolves
 		// inside the temp dir — otherwise tests that expect "no creds" can
 		// pick up the developer's real legacy credentials file.
 		t.Setenv("HOME", dir)
@@ -103,8 +103,8 @@ func TestPrintConfigPath(t *testing.T) {
 		t.Errorf("expected absolute path, got %q", got)
 	}
 	// Must end with the canonical suffix.
-	if !strings.HasSuffix(got, filepath.Join("lybel-docs", "credentials")) {
-		t.Errorf("path %q should end with lybel-docs/credentials", got)
+	if !strings.HasSuffix(got, filepath.Join("confluence-docs", "credentials")) {
+		t.Errorf("path %q should end with confluence-docs/credentials", got)
 	}
 }
 
@@ -207,8 +207,8 @@ func TestCheck_LegacyCredsWarning(t *testing.T) {
 		t.Setenv("XDG_CONFIG_HOME", xdgDir)
 	}
 
-	// Write legacy creds at ~/.config/lybel-docs/credentials.
-	legacyDir := filepath.Join(homeDir, ".config", "lybel-docs")
+	// Write legacy creds at ~/.config/confluence-docs/credentials.
+	legacyDir := filepath.Join(homeDir, ".config", "confluence-docs")
 	if err := os.MkdirAll(legacyDir, 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -255,8 +255,8 @@ func TestConfigPath_ContainsLybelDocs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ConfigPath() error: %v", err)
 	}
-	if !strings.Contains(p, "lybel-docs") {
-		t.Errorf("ConfigPath() = %q, want 'lybel-docs' in path", p)
+	if !strings.Contains(p, "confluence-docs") {
+		t.Errorf("ConfigPath() = %q, want 'confluence-docs' in path", p)
 	}
 	if !strings.HasSuffix(p, "credentials") {
 		t.Errorf("ConfigPath() = %q, want to end with 'credentials'", p)
@@ -273,7 +273,7 @@ func TestConfigPath_OSSpecific(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := filepath.Join(dir, "lybel-docs", "credentials")
+		want := filepath.Join(dir, "confluence-docs", "credentials")
 		if p != want {
 			t.Errorf("Linux: got %q, want %q", p, want)
 		}
@@ -285,7 +285,7 @@ func TestConfigPath_OSSpecific(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := filepath.Join(dir, "Library", "Application Support", "lybel-docs", "credentials")
+		want := filepath.Join(dir, "Library", "Application Support", "confluence-docs", "credentials")
 		if p != want {
 			t.Errorf("macOS: got %q, want %q", p, want)
 		}
@@ -296,7 +296,7 @@ func TestConfigPath_OSSpecific(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := filepath.Join(dir, "lybel-docs", "credentials")
+		want := filepath.Join(dir, "confluence-docs", "credentials")
 		if p != want {
 			t.Errorf("Windows: got %q, want %q", p, want)
 		}

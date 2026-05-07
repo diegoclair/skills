@@ -1,23 +1,23 @@
 #!/bin/sh
-# install.sh — POSIX shell installer for lybel-docs (Linux + macOS)
+# install.sh — POSIX shell installer for confluence-docs (Linux + macOS)
 #
 # Usage (one-liner):
-#   curl -fsSL https://raw.githubusercontent.com/lybel-app/skills/main/lybel-docs/install/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/lybel-app/skills/main/confluence-docs/install/install.sh | bash
 #
 # Environment variables (all optional):
-#   LYBEL_DOCS_REPO   GitHub "owner/repo" (default: lybel-app/skills)
+#   CONFLUENCE_DOCS_REPO   GitHub "owner/repo" (default: lybel-app/skills)
 #   CLAUDE_HOME       Override Claude home dir (default: $HOME/.claude)
-#   LYBEL_DOCS_VERSION  Specific release tag (default: latest)
+#   CONFLUENCE_DOCS_VERSION  Specific release tag (default: latest)
 
 set -e
 
 # ── config ────────────────────────────────────────────────────────────────────
 
-REPO="${LYBEL_DOCS_REPO:-lybel-app/skills}"
+REPO="${CONFLUENCE_DOCS_REPO:-lybel-app/skills}"
 CLAUDE_HOME="${CLAUDE_HOME:-$HOME/.claude}"
-SKILL_DIR="$CLAUDE_HOME/skills/lybel-docs"
+SKILL_DIR="$CLAUDE_HOME/skills/confluence-docs"
 BIN_DIR="$SKILL_DIR/bin"
-BIN_NAME="lybel-docs"
+BIN_NAME="confluence-docs"
 GITHUB_BASE="https://github.com/$REPO"
 GITHUB_RAW="https://raw.githubusercontent.com/$REPO/main"
 
@@ -62,8 +62,8 @@ PLATFORM="${os}-${arch}"
 
 # ── determine version ─────────────────────────────────────────────────────────
 
-if [ -n "$LYBEL_DOCS_VERSION" ]; then
-  VERSION="$LYBEL_DOCS_VERSION"
+if [ -n "$CONFLUENCE_DOCS_VERSION" ]; then
+  VERSION="$CONFLUENCE_DOCS_VERSION"
 else
   # Resolve the latest release tag via GitHub redirect.
   LATEST_URL="$GITHUB_BASE/releases/latest"
@@ -71,11 +71,11 @@ else
     VERSION="$(curl -fsSL -o /dev/null -w '%{url_effective}' "$LATEST_URL" 2>/dev/null | sed 's|.*/tag/||')" || true
   fi
   if [ -z "$VERSION" ] || [ "$VERSION" = "$LATEST_URL" ]; then
-    die "could not determine latest version; set LYBEL_DOCS_VERSION explicitly"
+    die "could not determine latest version; set CONFLUENCE_DOCS_VERSION explicitly"
   fi
 fi
 
-echo "Installing lybel-docs $VERSION for $PLATFORM..."
+echo "Installing confluence-docs $VERSION for $PLATFORM..."
 
 # ── prepare directories ───────────────────────────────────────────────────────
 
@@ -86,7 +86,7 @@ mkdir -p "$BIN_DIR"
 # The release archive (produced by the .github/workflows/release.yml workflow)
 # is a single .zip per platform with this layout:
 #
-#   bin/lybel-docs        (the binary; .exe on Windows)
+#   bin/confluence-docs        (the binary; .exe on Windows)
 #   SKILL.md              (skill entry point — read by Claude)
 #   reference/*.md        (skill reference docs)
 #
@@ -126,8 +126,8 @@ if [ "$extracted" = "0" ]; then
   die "extraction failed: archive at $TMP_ARCHIVE; install 'unzip' or 'python3' and retry"
 fi
 
-# Locate the binary inside the archive. The workflow places it at bin/lybel-docs
-# (or bin/lybel-docs.exe on Windows). Fall back to a recursive search if the
+# Locate the binary inside the archive. The workflow places it at bin/confluence-docs
+# (or bin/confluence-docs.exe on Windows). Fall back to a recursive search if the
 # layout ever changes.
 EXTRACTED_BIN="$EXTRACT_DIR/bin/$BIN_NAME"
 if [ ! -f "$EXTRACTED_BIN" ]; then
@@ -139,7 +139,7 @@ fi
 #
 # `cp` over the existing binary fails with "Text file busy" (ETXTBSY) when
 # the binary is currently being executed — exactly what happens during
-# `lybel-docs update`, which shells out to this script while running from
+# `confluence-docs update`, which shells out to this script while running from
 # $BIN_DIR/$BIN_NAME. The fix: cp into a sibling temp file in the SAME
 # directory, then rename. rename(2) is allowed even on running executables
 # (the live process keeps using the old inode, now anonymous; the new file
@@ -175,7 +175,7 @@ rm -rf "$TMP_DIR"
 # `cd`+relative path, which is friction the LLM has to deal with on every
 # invocation. Symlinking into ~/.local/bin (which is on PATH by default on
 # most modern Linux distros and macOS user setups) lets the agent just call
-# `lybel-docs ...`.
+# `confluence-docs ...`.
 
 USER_BIN="$HOME/.local/bin"
 SYMLINK="$USER_BIN/$BIN_NAME"
@@ -236,7 +236,7 @@ rm -rf "$TMP_DIR"
 # ── summary ───────────────────────────────────────────────────────────────────
 
 echo ""
-echo "Done. lybel-docs $VERSION installed to:"
+echo "Done. confluence-docs $VERSION installed to:"
 echo "  $BIN_DIR/$BIN_NAME"
 echo ""
 echo "Skill directory: $SKILL_DIR"
@@ -244,12 +244,12 @@ echo "Skill directory: $SKILL_DIR"
 if [ "$PATH_LINK_OK" = "1" ]; then
   if [ "$USER_BIN_ON_PATH" = "1" ]; then
     echo ""
-    echo "Ready to use: \`lybel-docs --version\` from any directory."
+    echo "Ready to use: \`confluence-docs --version\` from any directory."
   else
     echo ""
     echo "Symlink installed at: $SYMLINK"
     echo ""
-    echo "Note: $USER_BIN is NOT on your \$PATH. To enable the bare \`lybel-docs\`"
+    echo "Note: $USER_BIN is NOT on your \$PATH. To enable the bare \`confluence-docs\`"
     echo "command, add this to your shell profile (~/.bashrc, ~/.zshrc, ...):"
     echo "  export PATH=\"$USER_BIN:\$PATH\""
     echo "Then start a new shell, or for the current shell run:"

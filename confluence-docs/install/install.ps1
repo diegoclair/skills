@@ -1,23 +1,23 @@
-# install.ps1 — PowerShell 5+ installer for lybel-docs (Windows)
+# install.ps1 — PowerShell 5+ installer for confluence-docs (Windows)
 #
 # Usage (one-liner):
-#   iwr -useb https://raw.githubusercontent.com/lybel-app/skills/main/lybel-docs/install/install.ps1 | iex
+#   iwr -useb https://raw.githubusercontent.com/lybel-app/skills/main/confluence-docs/install/install.ps1 | iex
 #
 # Environment variables (all optional):
-#   $env:LYBEL_DOCS_REPO      GitHub "owner/repo" (default: lybel-app/skills)
+#   $env:CONFLUENCE_DOCS_REPO      GitHub "owner/repo" (default: lybel-app/skills)
 #   $env:CLAUDE_HOME          Override Claude home dir (default: $env:USERPROFILE\.claude)
-#   $env:LYBEL_DOCS_VERSION   Specific release tag (default: latest)
+#   $env:CONFLUENCE_DOCS_VERSION   Specific release tag (default: latest)
 
 #Requires -Version 5.0
 $ErrorActionPreference = 'Stop'
 
 # ── config ────────────────────────────────────────────────────────────────────
 
-$Repo        = if ($env:LYBEL_DOCS_REPO)    { $env:LYBEL_DOCS_REPO }    else { 'lybel-app/skills' }
+$Repo        = if ($env:CONFLUENCE_DOCS_REPO)    { $env:CONFLUENCE_DOCS_REPO }    else { 'lybel-app/skills' }
 $ClaudeHome  = if ($env:CLAUDE_HOME)         { $env:CLAUDE_HOME }         else { Join-Path $env:USERPROFILE '.claude' }
-$SkillDir    = Join-Path $ClaudeHome 'skills\lybel-docs'
+$SkillDir    = Join-Path $ClaudeHome 'skills\confluence-docs'
 $BinDir      = Join-Path $SkillDir 'bin'
-$BinName     = 'lybel-docs.exe'
+$BinName     = 'confluence-docs.exe'
 $GithubBase  = "https://github.com/$Repo"
 $GithubRaw   = "https://raw.githubusercontent.com/$Repo/main"
 
@@ -33,8 +33,8 @@ $Platform = "windows-$Arch"
 
 # ── determine version ─────────────────────────────────────────────────────────
 
-if ($env:LYBEL_DOCS_VERSION) {
-    $Version = $env:LYBEL_DOCS_VERSION
+if ($env:CONFLUENCE_DOCS_VERSION) {
+    $Version = $env:CONFLUENCE_DOCS_VERSION
 } else {
     # Follow the GitHub /releases/latest redirect to find the tag.
     try {
@@ -49,12 +49,12 @@ if ($env:LYBEL_DOCS_VERSION) {
         }
     }
     if (-not $Version) {
-        Write-Error "Could not determine latest version. Set `$env:LYBEL_DOCS_VERSION explicitly."
+        Write-Error "Could not determine latest version. Set `$env:CONFLUENCE_DOCS_VERSION explicitly."
         exit 1
     }
 }
 
-Write-Host "Installing lybel-docs $Version for $Platform..."
+Write-Host "Installing confluence-docs $Version for $Platform..."
 
 # ── prepare directories ───────────────────────────────────────────────────────
 
@@ -62,9 +62,9 @@ New-Item -ItemType Directory -Force -Path $BinDir | Out-Null
 
 # ── download and extract binary ───────────────────────────────────────────────
 
-$Archive     = "lybel-docs-$Platform.zip"
+$Archive     = "confluence-docs-$Platform.zip"
 $DownloadUrl = "$GithubBase/releases/download/$Version/$Archive"
-$TmpDir      = Join-Path $env:TEMP "lybel-docs-install-$(Get-Random)"
+$TmpDir      = Join-Path $env:TEMP "confluence-docs-install-$(Get-Random)"
 New-Item -ItemType Directory -Force -Path $TmpDir | Out-Null
 $TmpArchive  = Join-Path $TmpDir $Archive
 
@@ -87,13 +87,13 @@ try {
 }
 
 # Layout produced by .github/workflows/release.yml:
-#   bin/lybel-docs.exe
+#   bin/confluence-docs.exe
 #   SKILL.md
 #   reference/*.md
-$ExtractedBin = Join-Path $ExtractDir 'bin\lybel-docs.exe'
+$ExtractedBin = Join-Path $ExtractDir 'bin\confluence-docs.exe'
 if (-not (Test-Path $ExtractedBin)) {
     # Fallback: recursive search in case the layout ever changes.
-    $found = Get-ChildItem -Path $ExtractDir -Recurse -Filter 'lybel-docs*.exe' | Select-Object -First 1
+    $found = Get-ChildItem -Path $ExtractDir -Recurse -Filter 'confluence-docs*.exe' | Select-Object -First 1
     if ($found) { $ExtractedBin = $found.FullName }
 }
 if (-not (Test-Path $ExtractedBin)) {
@@ -106,7 +106,7 @@ $Destination = Join-Path $BinDir $BinName
 # Install the binary atomically.
 #
 # Copy-Item -Force fails with "file in use" when the .exe is currently
-# being executed — exactly what happens during `lybel-docs update`, which
+# being executed — exactly what happens during `confluence-docs update`, which
 # shells out to this script while running from $Destination. Windows DOES
 # allow renaming a running .exe though (the live process keeps its handle).
 # So: rename the running file out of the way first, then copy the new one
@@ -208,14 +208,14 @@ try {
 # ── summary ───────────────────────────────────────────────────────────────────
 
 Write-Host ""
-Write-Host "Done. lybel-docs $Version installed to:"
+Write-Host "Done. confluence-docs $Version installed to:"
 Write-Host "  $Destination"
 Write-Host ""
 Write-Host "Skill directory: $SkillDir"
 
 if ($PathRegistered) {
     Write-Host ""
-    Write-Host "Ready to use: ``lybel-docs --version`` from any new shell."
+    Write-Host "Ready to use: ``confluence-docs --version`` from any new shell."
     Write-Host "(Current shell already has it on PATH.)"
 } else {
     Write-Host ""

@@ -1,11 +1,11 @@
-# lybel-docs Makefile
+# confluence-docs Makefile
 #
 # Common targets:
-#   make build       Build native binary into bin/lybel-docs
+#   make build       Build native binary into bin/confluence-docs
 #   make build-all   Cross-compile for darwin/linux/windows × amd64/arm64
 #   make test        Run unit tests
 #   make install     Build and install to the Claude skill directory.
-#                    Default: $HOME/.claude/skills/lybel-docs/bin
+#                    Default: $HOME/.claude/skills/confluence-docs/bin
 #                    Override with: make install INSTALL_DIR=/custom/path
 #   make clean       Remove bin/ and dist/
 #   make fmt         go fmt ./...
@@ -14,11 +14,11 @@
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
 PKG     := .
-BIN     := lybel-docs
+BIN     := confluence-docs
 
 # Where the Claude skill loader expects to find the binary.
 # Override at invocation time if your Claude config lives elsewhere.
-INSTALL_DIR ?= $(HOME)/.claude/skills/lybel-docs/bin
+INSTALL_DIR ?= $(HOME)/.claude/skills/confluence-docs/bin
 
 .PHONY: all build build-all test install clean fmt lint deps release
 
@@ -65,11 +65,11 @@ lint:
 #   make release VERSION=v0.3.0
 #
 # Outputs (all inside dist/):
-#   lybel-docs-darwin-amd64.tar.gz
-#   lybel-docs-darwin-arm64.tar.gz
-#   lybel-docs-linux-amd64.tar.gz
-#   lybel-docs-linux-arm64.tar.gz
-#   lybel-docs-windows-amd64.zip
+#   confluence-docs-darwin-amd64.tar.gz
+#   confluence-docs-darwin-arm64.tar.gz
+#   confluence-docs-linux-amd64.tar.gz
+#   confluence-docs-linux-arm64.tar.gz
+#   confluence-docs-windows-amd64.zip
 #   SHASUMS256.txt
 release: build-all
 ifndef VERSION

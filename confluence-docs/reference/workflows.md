@@ -5,14 +5,14 @@ This file defines deterministic flows. When the user asks for one of the actions
 **Conventions:**
 - `cloudId` = `ab1dada3-b25e-40ad-9dbc-682caeea8d00` (always the same).
 - Space = `Lybel` (key `lybel`, ID `131352`).
-- **Tool priority:** prefer the Go CLI (`lybel-docs ...`) over the Atlassian MCP. The CLI returns sub-KB summaries; MCP returns full ADF bodies (10–40 KB). See SKILL.md §"Tool preferences" for the canonical table.
+- **Tool priority:** prefer the Go CLI (`confluence-docs ...`) over the Atlassian MCP. The CLI returns sub-KB summaries; MCP returns full ADF bodies (10–40 KB). See SKILL.md §"Tool preferences" for the canonical table.
 - **Read a page (3-step cascade):** `page digest` (outline + Status field) → `page get --section "Y" --format text` (one section as plain text) → `page get --format text` (whole page) → `page get --format export_view` / MCP `getConfluencePage(markdown)` only as fallback. Never load the whole ADF when you just need one section.
 - **"Qual o status de X?"** is usually answered by the `Status:` line in `page digest` output alone (Lybel pages prefix titles with status emojis 🟢🟡🟠🔴🔵⚪✅ which the digest parses).
-- **Create a page:** `lybel-docs page create --space-id 131352 --parent-id PID --title T --markdown FILE`. Fallback: MCP `createConfluencePage`.
-- **Update a section:** `lybel-docs page apply --page-id ID --replace-section "Heading" --fragment FILE` (atomic GET→edit→PUT with 409 retry). Fallback: `page get` + `edit` + `page upload`. Last resort: MCP `getConfluencePage(adf)` + `updateConfluencePage(adf)`.
-- **Rename / move a page:** `lybel-docs page move --page-id ID [--parent-id NEW_PARENT] [--title NEW_TITLE]` — body preserved, single PUT. At least one of `--parent-id` / `--title` is required.
-- **Delete a page:** `lybel-docs page delete --page-id ID --yes` — soft delete (Confluence trash, restorable). Always confirm with the user before issuing.
-- **Search:** `lybel-docs search "term" --limit 5`. Fallback: MCP `searchConfluenceUsingCql`.
+- **Create a page:** `confluence-docs page create --space-id 131352 --parent-id PID --title T --markdown FILE`. Fallback: MCP `createConfluencePage`.
+- **Update a section:** `confluence-docs page apply --page-id ID --replace-section "Heading" --fragment FILE` (atomic GET→edit→PUT with 409 retry). Fallback: `page get` + `edit` + `page upload`. Last resort: MCP `getConfluencePage(adf)` + `updateConfluencePage(adf)`.
+- **Rename / move a page:** `confluence-docs page move --page-id ID [--parent-id NEW_PARENT] [--title NEW_TITLE]` — body preserved, single PUT. At least one of `--parent-id` / `--title` is required.
+- **Delete a page:** `confluence-docs page delete --page-id ID --yes` — soft delete (Confluence trash, restorable). Always confirm with the user before issuing.
+- **Search:** `confluence-docs search "term" --limit 5`. Fallback: MCP `searchConfluenceUsingCql`.
 - **PageIds of parents (categories, sub-categories, departments)** come from the Home (Page ID Index) — always run Workflow 0 before other workflows in the session.
 
 ---
@@ -27,9 +27,9 @@ This file defines deterministic flows. When the user asks for one of the actions
 
 1. **Just query the cache directly — it auto-refreshes when stale:**
    ```
-   lybel-docs home --query "<term>"   # alias / decision-map lookup
-   lybel-docs home --digest           # outline + heading list
-   lybel-docs home --show             # full text rendering
+   confluence-docs home --query "<term>"   # alias / decision-map lookup
+   confluence-docs home --digest           # outline + heading list
+   confluence-docs home --show             # full text rendering
    ```
    These commands handle freshness internally: if the cache file is missing or older than 1h, they auto-fetch from Confluence and serve. You don't have to track when to refresh.
 
@@ -171,10 +171,10 @@ This file defines deterministic flows. When the user asks for one of the actions
 
 3. **If not in aliases**, run the CLI search (preferred):
    ```
-   lybel-docs search "TERM" --limit 10
+   confluence-docs search "TERM" --limit 10
    ```
    This expands to `space = "lybel" AND type = "page" AND (title ~ "TERM" OR text ~ "TERM")`. Output is TSV (`pageId<TAB>title<TAB>url<TAB>excerpt`).
-   - For raw CQL control: `lybel-docs search --cql 'space=lybel AND label="adr"'`.
+   - For raw CQL control: `confluence-docs search --cql 'space=lybel AND label="adr"'`.
    - Try pt-BR variants (with/without accents): "fraude" and "fraudes", "investidor" and "investidora".
 
    **Fallback** (CLI unavailable):

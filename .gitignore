@@ -29,8 +29,8 @@ vendor/
 /build/
 */cli/bin/
 */cli/dist/
-*/bin/lybel-docs
-*/bin/lybel-docs.exe
+*/bin/confluence-docs
+*/bin/confluence-docs.exe
 release-assets/
 
 # ============================================================

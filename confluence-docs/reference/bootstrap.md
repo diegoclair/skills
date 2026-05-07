@@ -23,9 +23,9 @@ In every new session involving the Lybel KB, Claude just queries the cache direc
 
 1. **Query the cache for navigation:**
    ```
-   lybel-docs home --query "advisor"      # alias / decision lookup
-   lybel-docs home --digest               # outline view
-   lybel-docs home --show                 # full text rendering
+   confluence-docs home --query "advisor"      # alias / decision lookup
+   confluence-docs home --digest               # outline view
+   confluence-docs home --show                 # full text rendering
    ```
    These commands auto-refresh the cache when it's missing or older than 1h. No need to run `home --refresh` first.
 

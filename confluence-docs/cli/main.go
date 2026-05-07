@@ -1,4 +1,4 @@
-// lybel-docs converts extended markdown (with Confluence macros) into ADF
+// confluence-docs converts extended markdown (with Confluence macros) into ADF
 // JSON for use with the Atlassian Confluence REST API, edits existing
 // ADF documents by section without losing macros, and talks directly to
 // the Confluence Cloud REST API v2 to get/upload/create pages.
@@ -18,28 +18,28 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lybel-app/skills/lybel-docs/cli/adf"
-	"github.com/lybel-app/skills/lybel-docs/cli/setup"
+	"github.com/lybel-app/skills/confluence-docs/cli/adf"
+	"github.com/lybel-app/skills/confluence-docs/cli/setup"
 )
 
 // version is injected at build time via -ldflags "-X main.version=..."
 var version = "dev"
 
-const helpText = `lybel-docs — Confluence ADF toolkit: convert, edit, lint, and publish pages.
+const helpText = `confluence-docs — Confluence ADF toolkit: convert, edit, lint, and publish pages.
 
 USAGE:
-  lybel-docs setup        [--email X --token Y | --check | --print-config-path]
-  lybel-docs update       [--check]
-  lybel-docs adf          [--file PATH] [--pretty]
-  lybel-docs edit         [--input PATH] OPERATION [--at-level N] [--pretty]
-  lybel-docs page         VERB [flags]
-  lybel-docs search       "term" [--limit N] [--space lybel] [--cql RAW] [--json]
-  lybel-docs home         [--refresh | --status | --show | --query "X" | --digest] [--max-age 24h]
-  lybel-docs lint         FILE.json
-  lybel-docs extract-body [< mcp-response.json]
-  lybel-docs index        VERB [flags]
-  lybel-docs --version
-  lybel-docs --help
+  confluence-docs setup        [--email X --token Y | --check | --print-config-path]
+  confluence-docs update       [--check]
+  confluence-docs adf          [--file PATH] [--pretty]
+  confluence-docs edit         [--input PATH] OPERATION [--at-level N] [--pretty]
+  confluence-docs page         VERB [flags]
+  confluence-docs search       "term" [--limit N] [--space lybel] [--cql RAW] [--json]
+  confluence-docs home         [--refresh | --status | --show | --query "X" | --digest] [--max-age 24h]
+  confluence-docs lint         FILE.json
+  confluence-docs extract-body [< mcp-response.json]
+  confluence-docs index        VERB [flags]
+  confluence-docs --version
+  confluence-docs --help
 
 COMMANDS:
   setup         Interactive wizard to configure Atlassian API credentials.
@@ -135,11 +135,11 @@ PAGE VERBS:
                (Old name 'list-children' still works as alias.)
 
 LINT:
-  lybel-docs lint page.json
+  confluence-docs lint page.json
     Exits 0 if clean, 1 if errors found. Diagnostics on stderr.
 
 EXTRACT-BODY:
-  lybel-docs extract-body < mcp-response.json > adf-body.json
+  confluence-docs extract-body < mcp-response.json > adf-body.json
     Reads MCP envelope [{type:"text",text:...}] or bare page JSON.
     Outputs the ADF body JSON ready for 'edit'.
 
@@ -170,7 +170,7 @@ SEARCH:
     Pass raw CQL — caller is responsible for escaping.
 
 HOME CACHE:
-  home --refresh                 Force GET + cache (~/.cache/lybel-docs/home.json).
+  home --refresh                 Force GET + cache (~/.cache/confluence-docs/home.json).
   home --status                  Print cache metadata (default if no flag).
   home --show                    Print cached page text (markdown rendering of ADF).
   home --query "term"            Grep cached content; auto-refresh if cache missing.
@@ -181,47 +181,47 @@ HOME CACHE:
 
 EXAMPLES:
   # Convert markdown to ADF
-  lybel-docs adf < page.md > page.adf.json
+  confluence-docs adf < page.md > page.adf.json
 
   # Slim summary of a page (cheap; LLM-friendly)
-  lybel-docs page digest --page-id 164232
+  confluence-docs page digest --page-id 164232
 
   # Atomic update without ever loading the full ADF into the caller
-  lybel-docs page apply --page-id 164232 \
+  confluence-docs page apply --page-id 164232 \
     --replace-section "Roadmap" --fragment new.md --message "rewrite roadmap"
 
   # Search the lybel space
-  lybel-docs search "advisor" --limit 5
+  confluence-docs search "advisor" --limit 5
 
   # Append a new section (preserves all macros)
-  lybel-docs edit --input page.json --append new-section.md > updated.json
+  confluence-docs edit --input page.json --append new-section.md > updated.json
 
   # Replace only the h3 "Ops" (not the h2 "Ops")
-  lybel-docs edit --input page.json --replace-section "Ops" --at-level 3 fragment.md > out.json
+  confluence-docs edit --input page.json --replace-section "Ops" --at-level 3 fragment.md > out.json
 
   # Add a row to a table inside a section
-  lybel-docs edit --input page.json --table-add-row "Page ID Index" \
+  confluence-docs edit --input page.json --table-add-row "Page ID Index" \
     --row "My Page|987654" --if-missing > updated.json
 
   # Fetch a page as ADF
-  lybel-docs page get --page-id 164232 --format adf --output current.json
+  confluence-docs page get --page-id 164232 --format adf --output current.json
 
   # Upload edited ADF back to Confluence (preview first, then commit)
-  lybel-docs page upload --page-id 164232 --adf updated.json --dry-run
-  lybel-docs page upload --page-id 164232 --adf updated.json --message "add row"
+  confluence-docs page upload --page-id 164232 --adf updated.json --dry-run
+  confluence-docs page upload --page-id 164232 --adf updated.json --message "add row"
 
   # Create a new page
-  lybel-docs page create --space-id 131352 --parent-id 164232 \
+  confluence-docs page create --space-id 131352 --parent-id 164232 \
     --title "New Page" --markdown content.md
 
   # Unwrap MCP response body
-  lybel-docs extract-body < mcp-response.json > body.json
+  confluence-docs extract-body < mcp-response.json > body.json
 
   # Validate ADF structure
-  lybel-docs lint page.json
+  confluence-docs lint page.json
 
   # Add entry to Home page index
-  lybel-docs index add --page-id 999 --title "My Page" --under "Sócios"
+  confluence-docs index add --page-id 999 --title "My Page" --under "Sócios"
 
 EXIT CODES:
   0  success
@@ -243,7 +243,7 @@ var errInvalidUsage = errors.New("invalid usage")
 func main() {
 	code, err := run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "lybel-docs:", err)
+		fmt.Fprintln(os.Stderr, "confluence-docs:", err)
 	}
 	os.Exit(code)
 }
@@ -260,7 +260,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) (int, error) 
 		fmt.Fprint(stdout, helpText)
 		return exitOK, nil
 	case "-v", "--version":
-		fmt.Fprintln(stdout, "lybel-docs", version)
+		fmt.Fprintln(stdout, "confluence-docs", version)
 		return exitOK, nil
 	case "setup":
 		return setup.Run(args[1:], stdin, stdout, stderr)
@@ -1861,7 +1861,7 @@ func runPageApply(args []string, stdout, stderr io.Writer) (int, error) {
 					}
 				}
 			}
-			// Return errInvalidUsage so main() prints a terse "lybel-docs:
+			// Return errInvalidUsage so main() prints a terse "confluence-docs:
 			// invalid usage" instead of re-printing the (potentially long)
 			// embedded heading list.
 			return exitInputErr, errInvalidUsage
@@ -2461,9 +2461,9 @@ func runSearch(args []string, stdout, stderr io.Writer) (int, error) {
 		case "-h", "--help":
 			fmt.Fprintln(stdout, "search — CQL search via the Confluence v1 search API. TSV output by default.")
 			fmt.Fprintln(stdout, "")
-			fmt.Fprintln(stdout, "  lybel-docs search \"term\"                  # title or text match in default space")
-			fmt.Fprintln(stdout, "  lybel-docs search --cql 'space=lybel AND label=\"adr\"'")
-			fmt.Fprintln(stdout, "  lybel-docs search \"term\" --limit 5 --json")
+			fmt.Fprintln(stdout, "  confluence-docs search \"term\"                  # title or text match in default space")
+			fmt.Fprintln(stdout, "  confluence-docs search --cql 'space=lybel AND label=\"adr\"'")
+			fmt.Fprintln(stdout, "  confluence-docs search \"term\" --limit 5 --json")
 			return exitOK, nil
 		default:
 			if strings.HasPrefix(a, "-") {
@@ -2596,11 +2596,11 @@ func runHome(args []string, stdout, stderr io.Writer) (int, error) {
 		case "-h", "--help":
 			fmt.Fprintln(stdout, "home — Lybel Confluence Home page cache.")
 			fmt.Fprintln(stdout, "")
-			fmt.Fprintln(stdout, "  lybel-docs home --refresh             # always fetch + overwrite cache")
-			fmt.Fprintln(stdout, "  lybel-docs home --status              # show cache metadata (read-only)")
-			fmt.Fprintln(stdout, "  lybel-docs home --show                # print cached text")
-			fmt.Fprintln(stdout, "  lybel-docs home --query \"advisor\"     # grep cached content")
-			fmt.Fprintln(stdout, "  lybel-docs home --digest              # print cached page digest")
+			fmt.Fprintln(stdout, "  confluence-docs home --refresh             # always fetch + overwrite cache")
+			fmt.Fprintln(stdout, "  confluence-docs home --status              # show cache metadata (read-only)")
+			fmt.Fprintln(stdout, "  confluence-docs home --show                # print cached text")
+			fmt.Fprintln(stdout, "  confluence-docs home --query \"advisor\"     # grep cached content")
+			fmt.Fprintln(stdout, "  confluence-docs home --digest              # print cached page digest")
 			fmt.Fprintln(stdout, "")
 			fmt.Fprintln(stdout, "Auto-refresh rules:")
 			fmt.Fprintln(stdout, "  --query/--show/--digest auto-refresh when the cache is missing OR")
@@ -2653,7 +2653,7 @@ func runHome(args []string, stdout, stderr io.Writer) (int, error) {
 		if os.IsNotExist(loadErr) {
 			needRefresh = (show || showDigest || query != "")
 			if !needRefresh {
-				fmt.Fprintln(stderr, "no home cache. Run: lybel-docs home --refresh")
+				fmt.Fprintln(stderr, "no home cache. Run: confluence-docs home --refresh")
 				return exitUnknownErr, loadErr
 			}
 		} else {
@@ -3387,7 +3387,7 @@ func runIndexSync(args []string, stdout, stderr io.Writer) (int, error) {
 	return exitOK, nil
 }
 
-// runUpdate self-updates the lybel-docs install. With --check it only
+// runUpdate self-updates the confluence-docs install. With --check it only
 // reports whether a newer release is available (exit 0 = up to date,
 // exit 10 = update available). Without --check it shells out to the
 // public installer (install.sh on Unix, install.ps1 on Windows) which
@@ -3404,8 +3404,8 @@ func runIndexSync(args []string, stdout, stderr io.Writer) (int, error) {
 func runUpdate(args []string, stdout, stderr io.Writer) (int, error) {
 	const (
 		repoOwnerRepo = "lybel-app/skills"
-		installShURL  = "https://raw.githubusercontent.com/lybel-app/skills/main/lybel-docs/install/install.sh"
-		installPS1URL = "https://raw.githubusercontent.com/lybel-app/skills/main/lybel-docs/install/install.ps1"
+		installShURL  = "https://raw.githubusercontent.com/lybel-app/skills/main/confluence-docs/install/install.sh"
+		installPS1URL = "https://raw.githubusercontent.com/lybel-app/skills/main/confluence-docs/install/install.ps1"
 		// exit 10 is reserved for "update available" so scripts/CI can
 		// distinguish "all good" (0) from "needs upgrade" without parsing.
 		exitUpdateAvailable = 10
@@ -3418,10 +3418,10 @@ func runUpdate(args []string, stdout, stderr io.Writer) (int, error) {
 		case "--check":
 			checkOnly = true
 		case "-h", "--help":
-			fmt.Fprintln(stdout, "update — fetch the latest release of lybel-docs.")
+			fmt.Fprintln(stdout, "update — fetch the latest release of confluence-docs.")
 			fmt.Fprintln(stdout, "")
-			fmt.Fprintln(stdout, "  lybel-docs update            # download + install latest release")
-			fmt.Fprintln(stdout, "  lybel-docs update --check    # only report whether an update is available")
+			fmt.Fprintln(stdout, "  confluence-docs update            # download + install latest release")
+			fmt.Fprintln(stdout, "  confluence-docs update --check    # only report whether an update is available")
 			fmt.Fprintln(stdout, "")
 			fmt.Fprintln(stdout, "Behavior: resolves the latest release tag from GitHub, compares with the")
 			fmt.Fprintln(stdout, "currently-installed version, and (unless --check) shells out to install.sh")
@@ -3447,16 +3447,16 @@ func runUpdate(args []string, stdout, stderr io.Writer) (int, error) {
 
 	current := version
 	if normalizeVersion(current) == normalizeVersion(latest) {
-		fmt.Fprintf(stdout, "lybel-docs is up to date (%s).\n", current)
+		fmt.Fprintf(stdout, "confluence-docs is up to date (%s).\n", current)
 		return exitOK, nil
 	}
 
 	if checkOnly {
-		fmt.Fprintf(stdout, "current: %s\nlatest:  %s\nrun: lybel-docs update\n", current, latest)
+		fmt.Fprintf(stdout, "current: %s\nlatest:  %s\nrun: confluence-docs update\n", current, latest)
 		return exitUpdateAvailable, nil
 	}
 
-	fmt.Fprintf(stdout, "Updating lybel-docs: %s → %s ...\n", current, latest)
+	fmt.Fprintf(stdout, "Updating confluence-docs: %s → %s ...\n", current, latest)
 
 	// Shell out to the public installer. This works for Linux/macOS via
 	// `curl | bash`. On Windows the equivalent is `iwr | iex` in PowerShell.

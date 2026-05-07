@@ -1,9 +1,9 @@
 ---
-name: lybel-docs
+name: confluence-docs
 description: |
   Navigation assistant for Lybel's Confluence knowledge base (space `lybel` at lybel.atlassian.net) — search, create, list, update pages. Aliases: confluence, wiki, kb, base de conhecimento, página/doc da Lybel, anota isso, registra isso, salva no doc, joga no wiki. Use for any Lybel documentation: processes, partners, advisors, investors, accelerators, retailers, fornecedores, roadmap, strategy, marca, design system, governance, or organizational artifact — even when "Confluence" isn't said. Triggers (pt-BR): "onde fica X", "me dá a página de Y", "cria página pra Z", "lista X", "qual o status de Y", "tem doc sobre Z", "adiciona isso", "documenta esse processo", "atualiza a página de Q", "adiciona advisor/parceiro/investidor", "anota no kb". Stores no specific data — fresh state lives in Confluence, fetched at session start via local CLI cache (preferred) or Atlassian MCP (fallback). Always replies in pt-BR with full URLs to lybel.atlassian.net.
 allowed-tools: |
-  Bash(lybel-docs *)
+  Bash(confluence-docs *)
   mcp__atlassian__getConfluencePage
   mcp__atlassian__searchConfluenceUsingCql
   mcp__atlassian__getPagesInConfluenceSpace
@@ -36,10 +36,10 @@ When you respond to the user:
 
 ## Tool priority — CLI first, MCP as fallback
 
-The `lybel-docs` Go CLI talks directly to the Confluence REST API and is **always the preferred tool** for reads, writes and searches. The Atlassian MCP returns the full ADF body of every page (tens of KB), which inflates the conversation context fast. The CLI returns a small digest, a TSV row, or a one-line status — orders of magnitude cheaper.
+The `confluence-docs` Go CLI talks directly to the Confluence REST API and is **always the preferred tool** for reads, writes and searches. The Atlassian MCP returns the full ADF body of every page (tens of KB), which inflates the conversation context fast. The CLI returns a small digest, a TSV row, or a one-line status — orders of magnitude cheaper.
 
 **Order of preference for any operation:**
-1. **`lybel-docs ...`** if the binary exists (check with `lybel-docs --version`).
+1. **`confluence-docs ...`** if the binary exists (check with `confluence-docs --version`).
 2. **MCP Atlassian** only when the CLI cannot do the job (rare cases: complex space exploration, attachments, comments, Jira).
 3. **`contentFormat: "markdown"` via MCP** — last resort, ONLY for pages with no macros (it flattens TOC/expand/panel and silently destroys structure).
 
@@ -51,10 +51,10 @@ In **EVERY new session**, just use the Home commands directly. The CLI handles f
 
 1. **Read the cache for navigation — auto-refreshes when stale:**
    ```
-   lybel-docs home --query "advisor"           # alias/decision lookup
-   lybel-docs home --query "Aceleração"        # find category + pageId
-   lybel-docs home --digest                    # outline view (~500 bytes)
-   lybel-docs home --show                      # full text rendering
+   confluence-docs home --query "advisor"           # alias/decision lookup
+   confluence-docs home --query "Aceleração"        # find category + pageId
+   confluence-docs home --digest                    # outline view (~500 bytes)
+   confluence-docs home --show                      # full text rendering
    ```
    These commands auto-refresh the cache when it's missing or older than 1h. You don't need to run `home --refresh` first. Most navigation answers are in the cache, returning a few hundred bytes per query.
 
@@ -69,7 +69,7 @@ In **EVERY new session**, just use the Home commands directly. The CLI handles f
 
 ### Cache lifecycle (the contract)
 
-The cache lives at `~/.cache/lybel-docs/home.json` — **a single file shared across all Claude sessions on the same machine**. So if one session refreshes (manually or via auto-refresh-on-write), every other session reading it next sees the updated state automatically. No per-session bookkeeping.
+The cache lives at `~/.cache/confluence-docs/home.json` — **a single file shared across all Claude sessions on the same machine**. So if one session refreshes (manually or via auto-refresh-on-write), every other session reading it next sees the updated state automatically. No per-session bookkeeping.
 
 Three rules govern when the cache is updated:
 
@@ -105,7 +105,7 @@ This skill is deliberately **timeless**. It stores no specific names (advisors, 
 
 2. **Cached Home (`home --query`).** Local, free, fastest after memory:
    ```
-   lybel-docs home --query "<term>"
+   confluence-docs home --query "<term>"
    ```
    Hits the Page ID Index, aliases, and "Onde coloco X?" decision map. Returns matching lines grouped by section.
 
@@ -113,7 +113,7 @@ This skill is deliberately **timeless**. It stores no specific names (advisors, 
 
 3. **CLI search (`search`).** When the term isn't in the Home (new pages, niche topics):
    ```
-   lybel-docs search "<term>" --limit 5
+   confluence-docs search "<term>" --limit 5
    ```
    Output is TSV: `pageId<TAB>title<TAB>url<TAB>excerpt`. ~150 bytes per result. The default CQL is `space="lybel" AND type="page" AND (title ~ "term" OR text ~ "term")`. Pass `--cql "raw CQL"` for fine control.
 
@@ -130,7 +130,7 @@ This skill is deliberately **timeless**. It stores no specific names (advisors, 
 **Step 1 — `digest` (cheapest, ~500 bytes).** Most questions can be answered from the outline alone:
 
 ```
-lybel-docs page digest --page-id <id>
+confluence-docs page digest --page-id <id>
 ```
 
 The digest also carries a `Status` line when the title starts with a Lybel status emoji (🟢 active, 🟡 in-progress, 🟠 evaluating, 🔴 blocked, 🔵 researched, ⚪ idle, ✅ done). For "qual o status de X" questions, this single field is often the entire answer. Add `--json` to get a structured object.
@@ -138,7 +138,7 @@ The digest also carries a `Status` line when the title starts with a Lybel statu
 **Step 2 — `get --section "Heading" --format text` (one section, ~hundreds of bytes).** When the digest tells you which section has the answer, fetch just that section as readable plain text:
 
 ```
-lybel-docs page get --page-id <id> --section "📌 Veredito atual" --format text
+confluence-docs page get --page-id <id> --section "📌 Veredito atual" --format text
 ```
 
 Section bounds = heading + all following nodes until the next heading of equal-or-higher level (so an h2 includes its h3 children). Use `--at-level N` to disambiguate when the same heading text appears at multiple levels. Output is markdown-ish (`## headings`, `- bullets`, pipe-tables, `[text](url)` links) — readable by a human and trivially parseable by an agent.
@@ -146,9 +146,9 @@ Section bounds = heading + all following nodes until the next heading of equal-o
 **Step 3 — `get` whole page (last resort, multi-KB).** Only when you genuinely need the full content (e.g. you'll be editing several sections):
 
 ```
-lybel-docs page get --page-id <id> --format text         # whole page as text
-lybel-docs page get --page-id <id> --format adf          # raw ADF (only if editing)
-lybel-docs page get --page-id <id> --format export_view  # rendered HTML
+confluence-docs page get --page-id <id> --format text         # whole page as text
+confluence-docs page get --page-id <id> --format adf          # raw ADF (only if editing)
+confluence-docs page get --page-id <id> --format export_view  # rendered HTML
 ```
 
 **`--output FILE` and `--quiet`** are available on all `page get` invocations: `--output` writes to disk instead of stdout; `--quiet` suppresses the "wrote N bytes" stderr message. Use `--quiet` when the caller captures both streams.
@@ -161,61 +161,61 @@ lybel-docs page get --page-id <id> --format export_view  # rendered HTML
 4. Write the content as markdown to a temp file (e.g. `/tmp/lybel-edit/page.md`). The CLI's `adf` converter supports Confluence macros (`[TOC]`, `:::expand`, `:::warning`, etc.) via extended markdown.
 5. Create directly via the CLI (single command, no MCP round-trip):
    ```
-   lybel-docs page create \
+   confluence-docs page create \
      --space-id 131352 --parent-id <parentId> --title "Final Title" \
      --markdown /tmp/lybel-edit/page.md
    ```
 6. The CLI prints `{"pageId": "...", "title": "...", "url": "..."}`. Return the final URL to the user.
 
-**Fallback** (CLI unavailable): `mcp__atlassian__createConfluencePage` with `contentFormat: "adf"` after running `lybel-docs adf` to convert the markdown. Last resort: `contentFormat: "markdown"`.
+**Fallback** (CLI unavailable): `mcp__atlassian__createConfluencePage` with `contentFormat: "adf"` after running `confluence-docs adf` to convert the markdown. Last resort: `contentFormat: "markdown"`.
 
 ### 4. Update — "atualiza a página de X" / "adiciona seção Y"
 
 **Never build ADF by hand, and never use `contentFormat: "markdown"` to update a page with macros** (TOC, Expand, panel). Markdown update flattens macros and silently destroys structure.
 
-**Preferred path (single atomic command):** `lybel-docs page apply` does GET → section-edit → PUT in one shot, with automatic refetch-and-retry on 409 conflict (someone else updated mid-flight). The full ADF never enters the conversation context.
+**Preferred path (single atomic command):** `confluence-docs page apply` does GET → section-edit → PUT in one shot, with automatic refetch-and-retry on 409 conflict (someone else updated mid-flight). The full ADF never enters the conversation context.
 
 ```
 # Replace a single section, preserving every macro outside it
-lybel-docs page apply --page-id <id> \
+confluence-docs page apply --page-id <id> \
   --replace-section "Roadmap" --fragment /tmp/lybel-edit/new.md \
   --message "rewrite roadmap"
 
 # Append a new section at the end
-lybel-docs page apply --page-id <id> \
+confluence-docs page apply --page-id <id> \
   --append --fragment /tmp/lybel-edit/new.md \
   --message "add Q3 retrospective"
 
 # Insert relative to an existing heading
-lybel-docs page apply --page-id <id> \
+confluence-docs page apply --page-id <id> \
   --insert-after "Research" --fragment /tmp/lybel-edit/new.md
 
-lybel-docs page apply --page-id <id> \
+confluence-docs page apply --page-id <id> \
   --insert-before "FAQ" --fragment /tmp/lybel-edit/new.md
 
 # Delete a stale section
-lybel-docs page apply --page-id <id> --delete-section "TODO antigo"
+confluence-docs page apply --page-id <id> --delete-section "TODO antigo"
 
 # Disambiguate when the same heading text appears at multiple levels
-lybel-docs page apply --page-id <id> \
+confluence-docs page apply --page-id <id> \
   --replace-section "Ops" --at-level 3 --fragment /tmp/lybel-edit/new.md
 
 # Add a row to a table inside a section (idempotent with --if-missing)
-lybel-docs page apply --page-id <id> \
+confluence-docs page apply --page-id <id> \
   --table-add-row "Status atual" --row "Acme Corp|🟡 Em avaliação|Origem X|nota" \
   --if-missing --message "add Acme to status table"
 
 # Cells with literal pipes: escape with backslash
-lybel-docs page apply --page-id <id> \
+confluence-docs page apply --page-id <id> \
   --table-add-row "Endpoints" --row "GET /api/v1\|v2|public|200ms"
 # → cells: ["GET /api/v1|v2", "public", "200ms"]
 
 # Remove a row by matching cell text
-lybel-docs page apply --page-id <id> \
+confluence-docs page apply --page-id <id> \
   --table-remove-row "Status atual" --match-cell "Acme Corp"
 
 # Preview without writing
-lybel-docs page apply --page-id <id> \
+confluence-docs page apply --page-id <id> \
   --replace-section "Roadmap" --fragment frag.md --dry-run
 ```
 
@@ -224,9 +224,9 @@ For section replacement, include the heading line in the fragment markdown. Sect
 **If `apply` reports "section not found"**, the command also lists the page's current top-level headings so you can correct the spelling or pick a different section. **Never blindly retry** — confirm with the user when the page structure differs from what was expected.
 
 **Two-step fallback** (when `apply` is unavailable but `edit` is):
-1. `lybel-docs page get --page-id <id> --format adf --output /tmp/current.json`
-2. `lybel-docs edit -i /tmp/current.json --replace-section "..." /tmp/frag.md > /tmp/new.json`
-3. `lybel-docs page upload --page-id <id> --adf /tmp/new.json --message "..."`
+1. `confluence-docs page get --page-id <id> --format adf --output /tmp/current.json`
+2. `confluence-docs edit -i /tmp/current.json --replace-section "..." /tmp/frag.md > /tmp/new.json`
+3. `confluence-docs page upload --page-id <id> --adf /tmp/new.json --message "..."`
 
 **MCP fallback** (when no CLI at all):
 1. `getConfluencePage(contentFormat="adf")` → save body to disk
@@ -240,7 +240,7 @@ If the page has macros and no CLI is installed, warn the user that updating via 
 1. Identify the category via the Home.
 2. Use the CLI to list direct children:
    ```
-   lybel-docs page children --page-id <categoryParentId>
+   confluence-docs page children --page-id <categoryParentId>
    ```
    Output: `pageId<TAB>title` per line.
 3. Return as bullets ordered by title or status.
@@ -263,19 +263,19 @@ The `page move` and `page delete` verbs handle structural changes without touchi
 
 ```
 # Rename only (parent unchanged)
-lybel-docs page move --page-id <id> --title "New Title" --message "rename: reason"
+confluence-docs page move --page-id <id> --title "New Title" --message "rename: reason"
 
 # Reparent only (title unchanged)
-lybel-docs page move --page-id <id> --parent-id <newParentId> --message "move under X"
+confluence-docs page move --page-id <id> --parent-id <newParentId> --message "move under X"
 
 # Both at once (single PUT)
-lybel-docs page move --page-id <id> --parent-id <newParentId> --title "New Title"
+confluence-docs page move --page-id <id> --parent-id <newParentId> --title "New Title"
 
 # Preview without writing
-lybel-docs page move --page-id <id> --title "..." --dry-run
+confluence-docs page move --page-id <id> --title "..." --dry-run
 
 # Soft-delete (restorable from Confluence trash)
-lybel-docs page delete --page-id <id> --yes
+confluence-docs page delete --page-id <id> --yes
 ```
 
 **How move works under the hood:** v2 PUT requires the body, so `page move` GETs the current ADF and re-PUTs it with the new `parentId` / `title`. Body is preserved byte-for-byte; macros stay intact. The full ADF never enters the conversation context.
@@ -382,7 +382,7 @@ Don't ask the user — pass these values directly to the MCP tools or CLI flags.
 
 ## Home cache lifecycle
 
-The local cache at `~/.cache/lybel-docs/home.json` is shared across all Claude sessions on the same machine. The CLI maintains it for you — see the "Cache lifecycle" table in the bootstrap section above for the full contract.
+The local cache at `~/.cache/confluence-docs/home.json` is shared across all Claude sessions on the same machine. The CLI maintains it for you — see the "Cache lifecycle" table in the bootstrap section above for the full contract.
 
 Quick reference:
 
@@ -395,28 +395,28 @@ This invariant — **read-only cache, fresh fetch before every write** — is th
 
 ## CLI installation check
 
-Before running any `lybel-docs` command, verify the binary exists and credentials are valid. The bootstrap flow is:
+Before running any `confluence-docs` command, verify the binary exists and credentials are valid. The bootstrap flow is:
 
 ```
-lybel-docs --version          # binary present?
-lybel-docs setup --check      # exit 0 = creds valid
+confluence-docs --version          # binary present?
+confluence-docs setup --check      # exit 0 = creds valid
 ```
 
 Exit codes for `setup --check`:
 - `0` — credentials valid → proceed
-- `1` — no credentials file → run `lybel-docs setup` interactively (or guide the user through Step 5 of `lybel-docs/cli/README.md`)
+- `1` — no credentials file → run `confluence-docs setup` interactively (or guide the user through Step 5 of `confluence-docs/cli/README.md`)
 - `2` — credentials invalid (token revoked or mistyped) → ask the user to regenerate the token at `https://id.atlassian.com/manage-profile/security/api-tokens` and re-run setup
 - `3` — network error → retry once; if it persists, surface the error to the user and fall back to MCP
 
-If the binary is absent entirely, fall back to MCP for the current request and tell the user how to install: `lybel-docs/cli/README.md` has the one-shot install URL.
+If the binary is absent entirely, fall back to MCP for the current request and tell the user how to install: `confluence-docs/cli/README.md` has the one-shot install URL.
 
 ## Updating the skill — "atualiza a skill" / "tem versão nova?"
 
-When the user asks to update, check, or upgrade the skill (any of: "atualiza a skill", "atualiza o lybel-docs", "tem versão nova?", "verifica se tem update", "tá na última versão?"), run:
+When the user asks to update, check, or upgrade the skill (any of: "atualiza a skill", "atualiza o confluence-docs", "tem versão nova?", "verifica se tem update", "tá na última versão?"), run:
 
 ```
-lybel-docs update            # download + install latest release
-lybel-docs update --check    # only report whether an update is available
+confluence-docs update            # download + install latest release
+confluence-docs update --check    # only report whether an update is available
 ```
 
 **Behavior:**
@@ -425,8 +425,8 @@ lybel-docs update --check    # only report whether an update is available
 - If `--check`: reports `current → latest` and exits (0 = up to date, 10 = update available).
 - Without `--check`: shells out to the public installer (install.sh on Linux/macOS, install.ps1 on Windows). The installer overwrites the binary, SKILL.md, and reference files atomically. **Credentials and the home cache are preserved across the update** — no re-setup needed.
 
-**For non-technical users:** they don't need to remember any URL. Just running `lybel-docs update` does everything. Reply in pt-BR with the result, e.g.:
+**For non-technical users:** they don't need to remember any URL. Just running `confluence-docs update` does everything. Reply in pt-BR with the result, e.g.:
 - "Já está na última versão (v0.3.3)."
 - "Atualizei de v0.3.0 → v0.3.3."
 
-**When to suggest an update proactively:** if the user reports a CLI behavior that you know was changed in a more recent release (e.g. they say "esse comando não existe" for a flag you know exists), check `lybel-docs --version` and `lybel-docs update --check` before assuming a real bug.
+**When to suggest an update proactively:** if the user reports a CLI behavior that you know was changed in a more recent release (e.g. they say "esse comando não existe" for a flag you know exists), check `confluence-docs --version` and `confluence-docs update --check` before assuming a real bug.

@@ -1,4 +1,4 @@
-# lybel-docs
+# confluence-docs
 
 Confluence ADF toolkit and skill for Claude. Edits Confluence pages without
 destroying macros, and drives the Lybel knowledge base.
@@ -21,17 +21,17 @@ Read the `Platform:` field in your environment context.
 **Linux / macOS:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/lybel-app/skills/main/lybel-docs/install/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/lybel-app/skills/main/confluence-docs/install/install.sh | bash
 ```
 
 **Windows:**
 
 ```powershell
-iwr -useb https://raw.githubusercontent.com/lybel-app/skills/main/lybel-docs/install/install.ps1 | iex
+iwr -useb https://raw.githubusercontent.com/lybel-app/skills/main/confluence-docs/install/install.ps1 | iex
 ```
 
 The script downloads the correct binary, places it at
-`~/.claude/skills/lybel-docs/bin/lybel-docs` (or `.exe` on Windows), and also
+`~/.claude/skills/confluence-docs/bin/confluence-docs` (or `.exe` on Windows), and also
 extracts the SKILL.md and reference files from the same release archive.
 The scripts live at [`../install/install.sh`](../install/install.sh) and
 [`../install/install.ps1`](../install/install.ps1) — read them before piping
@@ -40,17 +40,17 @@ to `bash`/`iex` if you want to inspect what runs.
 ### Step 3 — Verify the binary
 
 ```bash
-lybel-docs --version
+confluence-docs --version
 ```
 
-Expected output: `lybel-docs v<x.y.z>`. If the command is not found, check
-that `~/.claude/skills/lybel-docs/bin/` is on `$PATH` (the install script
+Expected output: `confluence-docs v<x.y.z>`. If the command is not found, check
+that `~/.claude/skills/confluence-docs/bin/` is on `$PATH` (the install script
 handles this, but a new shell session may be needed).
 
 ### Step 4 — Check credentials
 
 ```bash
-lybel-docs setup --check
+confluence-docs setup --check
 ```
 
 Route by exit code:
@@ -70,7 +70,7 @@ Conduct entirely in chat — no terminal commands needed from the user.
 
    > "Preciso de um token do Atlassian pra conectar ao Confluence. Abre essa
    > URL no navegador, clica em **Create API token**, dá um nome (ex:
-   > `lybel-docs`), copia o token e me cola aqui. Também me diz o teu email
+   > `confluence-docs`), copia o token e me cola aqui. Também me diz o teu email
    > do Atlassian."
    >
    > URL: `https://id.atlassian.com/manage-profile/security/api-tokens`
@@ -80,13 +80,13 @@ Conduct entirely in chat — no terminal commands needed from the user.
 3. Get the OS-correct config file path:
 
    ```bash
-   lybel-docs setup --print-config-path
+   confluence-docs setup --print-config-path
    ```
 
 4. Get the exact file format:
 
    ```bash
-   lybel-docs setup --print-config-format
+   confluence-docs setup --print-config-format
    ```
 
 5. Use the `Write` tool to create the file at the printed path with the
@@ -111,7 +111,7 @@ Conduct entirely in chat — no terminal commands needed from the user.
 7. Validate:
 
    ```bash
-   lybel-docs setup --check
+   confluence-docs setup --check
    ```
 
    Must exit `0`. If it still fails (exit `2`), tell the user:
@@ -131,14 +131,14 @@ Conduct entirely in chat — no terminal commands needed from the user.
 
 ## For humans
 
-**lybel-docs** is a command-line tool that:
+**confluence-docs** is a command-line tool that:
 
-- Drives Claude's Confluence skill (`~/.claude/skills/lybel-docs/SKILL.md`) so
+- Drives Claude's Confluence skill (`~/.claude/skills/confluence-docs/SKILL.md`) so
   the assistant can hit Confluence directly without paying the token cost of
   the Atlassian MCP. Most operations return sub-KB output instead of full ADF
   bodies — typically 10–50× cheaper across a multi-edit session.
 - Maintains a **local cache of the Confluence Home** (`home` command) at
-  `~/.cache/lybel-docs/home.json`. One `home --refresh` per session pulls the
+  `~/.cache/confluence-docs/home.json`. One `home --refresh` per session pulls the
   Home from Confluence; every subsequent `home --query`, `--show`, `--digest`
   reads from disk — zero API calls. Writes always GET fresh ADF before PUT,
   so the cache is never the source for an update (avoids overwriting work
@@ -172,19 +172,19 @@ Conduct entirely in chat — no terminal commands needed from the user.
 **Linux / macOS:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/lybel-app/skills/main/lybel-docs/install/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/lybel-app/skills/main/confluence-docs/install/install.sh | bash
 ```
 
 **Windows:**
 
 ```powershell
-iwr -useb https://raw.githubusercontent.com/lybel-app/skills/main/lybel-docs/install/install.ps1 | iex
+iwr -useb https://raw.githubusercontent.com/lybel-app/skills/main/confluence-docs/install/install.ps1 | iex
 ```
 
 After the script finishes, configure your credentials:
 
 ```bash
-lybel-docs setup
+confluence-docs setup
 ```
 
 Or ask Claude to do it for you — paste this page's URL in a Claude conversation
@@ -195,8 +195,8 @@ and say "instala essa skill".
 Requires Go 1.26.2+. No other runtime dependencies.
 
 ```bash
-make build     # builds bin/lybel-docs
-make install   # builds and copies to ~/.claude/skills/lybel-docs/bin/lybel-docs
+make build     # builds bin/confluence-docs
+make install   # builds and copies to ~/.claude/skills/confluence-docs/bin/confluence-docs
                # (override with INSTALL_DIR=/custom/path)
 ```
 
@@ -217,12 +217,12 @@ make install   # builds and copies to ~/.claude/skills/lybel-docs/bin/lybel-docs
 | `page delete` | Soft-delete a page (sends to Confluence trash, restorable). Requires `--yes` to confirm. Alias: `page trash` |
 | `page children` | List direct children of a page (TSV: id, title). Old name `list-children` still works as alias |
 | `search` | CQL search via the v1 API. TSV output (`pageId\ttitle\turl\texcerpt`). Defaults to `space="lybel" AND type="page"` |
-| `home` | Local Home-page cache. Verbs: `--refresh` (force GET + cache), `--status` (metadata), `--show` (text), `--query "X"` (grep), `--digest`. Cache at `~/.cache/lybel-docs/home.json`. Read-only — writes always GET fresh ADF first |
+| `home` | Local Home-page cache. Verbs: `--refresh` (force GET + cache), `--status` (metadata), `--show` (text), `--query "X"` (grep), `--digest`. Cache at `~/.cache/confluence-docs/home.json`. Read-only — writes always GET fresh ADF first |
 | `lint` | Validate ADF structure and report errors/warnings |
 | `extract-body` | Unwrap the ADF body from an MCP `getConfluencePage` response |
 | `index` | Manage the Page ID Index table on the Lybel Home page |
 
-Run `lybel-docs --help` or `lybel-docs <command> --help` for full flag
+Run `confluence-docs --help` or `confluence-docs <command> --help` for full flag
 documentation.
 
 Exit codes for `adf`/`edit`/`lint`/`extract-body`: `0` success, `1` parse
@@ -236,18 +236,18 @@ network error.
 | File | Purpose |
 |---|---|
 | [`SETUP.md`](SETUP.md) | Manual credential setup — alternative to the interactive wizard |
-| [`../SKILL.md`](../SKILL.md) | How Claude uses this skill (installed by the install script to `~/.claude/skills/lybel-docs/SKILL.md`) |
+| [`../SKILL.md`](../SKILL.md) | How Claude uses this skill (installed by the install script to `~/.claude/skills/confluence-docs/SKILL.md`) |
 | [`../install/install.sh`](../install/install.sh) / [`install.ps1`](../install/install.ps1) | The install scripts — inspect before piping to `bash`/`iex` |
 
 ### Repository layout
 
-This is the **CLI source dir** (`lybel-docs/cli/`). The skill payload
-lives one level up at `lybel-docs/` (SKILL.md + reference/), and the
-end-user install scripts live at `lybel-docs/install/`. See the
+This is the **CLI source dir** (`confluence-docs/cli/`). The skill payload
+lives one level up at `confluence-docs/` (SKILL.md + reference/), and the
+end-user install scripts live at `confluence-docs/install/`. See the
 [root README](../../README.md) for the full repo convention.
 
 ```
-lybel-docs/
+confluence-docs/
 ├── SKILL.md                Skill entrypoint (read by Claude at runtime)
 ├── reference/              Skill reference docs (templates, taxonomy, workflows)
 ├── install/
@@ -260,7 +260,7 @@ lybel-docs/
     ├── main.go             CLI entry, flag parsing, IO plumbing (incl. page digest/apply, search)
     ├── main_test.go        CLI integration tests
     ├── go.mod / go.sum
-    ├── setup/              Credential wizard (lybel-docs setup)
+    ├── setup/              Credential wizard (confluence-docs setup)
     └── adf/
         ├── builder.go      ADF node + mark types and constructor helpers
         ├── converter.go    goldmark AST -> ADF walker
@@ -270,7 +270,7 @@ lybel-docs/
         ├── confluence.go   REST API v2 HTTP client + creds + CQL search + 409 detection
         ├── digest.go       Slim page-summary builder (heading outline, macros, words)
         ├── render.go       ADF -> markdown-ish plain text (used by home cache)
-        ├── cache.go        HomeCache type + load/save (~/.cache/lybel-docs/home.json)
+        ├── cache.go        HomeCache type + load/save (~/.cache/confluence-docs/home.json)
         ├── lint.go         ADF structure validator
         └── *_test.go       Tests
 ```

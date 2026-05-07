@@ -1,6 +1,6 @@
-# lybel-docs — Setup Guide
+# confluence-docs — Setup Guide
 
-> **Most users:** run `lybel-docs setup` (interactive wizard) or ask Claude to
+> **Most users:** run `confluence-docs setup` (interactive wizard) or ask Claude to
 > set it up for you. This file is the manual fallback for developers or anyone
 > who prefers to configure credentials by hand.
 
@@ -14,7 +14,7 @@ commands, which talk directly to Confluence.
 
 1. Open: **https://id.atlassian.com/manage-profile/security/api-tokens**
 2. Click **Create API token**.
-3. Give it a label — for example, `lybel-docs`.
+3. Give it a label — for example, `confluence-docs`.
 4. Copy the token immediately. You will not be able to see it again.
 
 Keep this token secret. Treat it like a password. **Never commit it to git.**
@@ -23,13 +23,13 @@ Keep this token secret. Treat it like a password. **Never commit it to git.**
 
 ## 2. Provide Credentials
 
-`lybel-docs` checks four sources in order. Use whichever method fits your
+`confluence-docs` checks four sources in order. Use whichever method fits your
 situation best.
 
 ### Option 1 — Interactive wizard (recommended for everyone)
 
 ```bash
-lybel-docs setup
+confluence-docs setup
 ```
 
 The wizard asks for your email and token, writes the credentials file in the
@@ -38,7 +38,7 @@ right place for your OS, and sets secure file permissions automatically.
 If you prefer to pass values non-interactively (useful in CI or scripting):
 
 ```bash
-lybel-docs setup --email you@yourcompany.com --token ATATT3xFfGF0...
+confluence-docs setup --email you@yourcompany.com --token ATATT3xFfGF0...
 ```
 
 ---
@@ -49,14 +49,14 @@ Create the credentials file at the path for your OS:
 
 | OS | Path |
 |---|---|
-| **Linux** | `~/.config/lybel-docs/credentials` (or `$XDG_CONFIG_HOME/lybel-docs/credentials` if set) |
-| **macOS** | `~/Library/Application Support/lybel-docs/credentials` |
-| **Windows** | `%APPDATA%\lybel-docs\credentials` |
+| **Linux** | `~/.config/confluence-docs/credentials` (or `$XDG_CONFIG_HOME/confluence-docs/credentials` if set) |
+| **macOS** | `~/Library/Application Support/confluence-docs/credentials` |
+| **Windows** | `%APPDATA%\confluence-docs\credentials` |
 
 Not sure where to look? Run:
 
 ```bash
-lybel-docs setup --print-config-path
+confluence-docs setup --print-config-path
 ```
 
 This prints the exact absolute path for your machine.
@@ -74,23 +74,23 @@ Lines starting with `#` are ignored (comments).
 
 ```bash
 # Create parent directory
-mkdir -p "$(lybel-docs setup --print-config-path | xargs dirname)"
+mkdir -p "$(confluence-docs setup --print-config-path | xargs dirname)"
 
 # Write the file (replace values with your real ones)
-cat > "$(lybel-docs setup --print-config-path)" << 'EOF'
+cat > "$(confluence-docs setup --print-config-path)" << 'EOF'
 email=you@yourcompany.com
 token=ATATT3xFfGF0...
 EOF
 
 # Restrict access to your user only
-chmod 600 "$(lybel-docs setup --print-config-path)"
+chmod 600 "$(confluence-docs setup --print-config-path)"
 ```
 
 **Creating the file on Windows (PowerShell):**
 
 ```powershell
 # Get the path
-$path = lybel-docs setup --print-config-path
+$path = confluence-docs setup --print-config-path
 
 # Create parent directory if needed
 New-Item -ItemType Directory -Force -Path (Split-Path $path)
@@ -130,7 +130,7 @@ Pass credentials directly on the command line. Good for scripts; avoid in
 interactive use because the token may appear in shell history.
 
 ```bash
-lybel-docs page get --page-id 164232 \
+confluence-docs page get --page-id 164232 \
   --email you@yourcompany.com \
   --token ATATT3xFfGF0...
 ```
@@ -142,7 +142,7 @@ lybel-docs page get --page-id 164232 \
 Once credentials are configured, verify everything works:
 
 ```bash
-lybel-docs setup --check
+confluence-docs setup --check
 ```
 
 Exit codes:
@@ -150,7 +150,7 @@ Exit codes:
 | Code | Meaning |
 |---|---|
 | `0` | Credentials valid — you are good to go |
-| `1` | No credentials found — run `lybel-docs setup` |
+| `1` | No credentials found — run `confluence-docs setup` |
 | `2` | Credentials present but rejected by Atlassian — see Troubleshooting |
 | `3` | Network error — check internet connection and VPN |
 
@@ -158,12 +158,12 @@ Exit codes:
 
 ## 4. Cloud Configuration
 
-By default `lybel-docs` connects to `lybel.atlassian.net`. To use a different
+By default `confluence-docs` connects to `lybel.atlassian.net`. To use a different
 Confluence instance:
 
 ```bash
 # Via flag (single command)
-lybel-docs page get --cloud mycompany --page-id 123
+confluence-docs page get --cloud mycompany --page-id 123
 
 # Via environment variable (persists across commands)
 export ATLASSIAN_CLOUD=mycompany
@@ -180,10 +180,10 @@ The value is the subdomain only (e.g. `lybel`, not `lybel.atlassian.net`).
 The token was probably revoked, mistyped, or copied with extra whitespace.
 
 1. Go to **https://id.atlassian.com/manage-profile/security/api-tokens**.
-2. Revoke the old `lybel-docs` token.
+2. Revoke the old `confluence-docs` token.
 3. Click **Create API token**, create a new one with the same label.
-4. Run `lybel-docs setup` (or edit the credentials file) with the new token.
-5. Run `lybel-docs setup --check` — should now exit `0`.
+4. Run `confluence-docs setup` (or edit the credentials file) with the new token.
+5. Run `confluence-docs setup --check` — should now exit `0`.
 
 ### "Wrong email"
 
@@ -197,12 +197,12 @@ your work email (e.g. `you@yourcompany.com`). Check it at
 - If behind a VPN, make sure it is connected.
 - Corporate proxies: set `HTTPS_PROXY` in your environment if needed.
 
-### "Command not found: lybel-docs"
+### "Command not found: confluence-docs"
 
 The binary is not on your `$PATH`. Run:
 
 ```bash
-export PATH="$HOME/.claude/skills/lybel-docs/bin:$PATH"
+export PATH="$HOME/.claude/skills/confluence-docs/bin:$PATH"
 ```
 
 Add that line to your shell profile to make it permanent. Or re-run the install
@@ -227,14 +227,14 @@ script, which adds it automatically.
 
 | What you want | Command |
 |---|---|
-| Interactive setup | `lybel-docs setup` |
-| Validate credentials | `lybel-docs setup --check` |
-| See credentials file path | `lybel-docs setup --print-config-path` |
-| Fetch a page as ADF | `lybel-docs page get --page-id ID --format adf --output page.json` |
-| Edit a page (local) | `lybel-docs edit --input page.json --append frag.md > updated.json` |
-| Preview upload | `lybel-docs page upload --page-id ID --adf updated.json --dry-run` |
-| Upload changes | `lybel-docs page upload --page-id ID --adf updated.json --message "what changed"` |
-| Create a new page | `lybel-docs page create --space-id 131352 --parent-id PARENT --title "Title" --markdown content.md` |
-| Add row to index | `lybel-docs index add --page-id 999 --title "Page Name" --under "Section Heading"` |
-| Validate ADF file | `lybel-docs lint page.json` |
-| Unwrap MCP response | `lybel-docs extract-body < mcp-response.json > body.json` |
+| Interactive setup | `confluence-docs setup` |
+| Validate credentials | `confluence-docs setup --check` |
+| See credentials file path | `confluence-docs setup --print-config-path` |
+| Fetch a page as ADF | `confluence-docs page get --page-id ID --format adf --output page.json` |
+| Edit a page (local) | `confluence-docs edit --input page.json --append frag.md > updated.json` |
+| Preview upload | `confluence-docs page upload --page-id ID --adf updated.json --dry-run` |
+| Upload changes | `confluence-docs page upload --page-id ID --adf updated.json --message "what changed"` |
+| Create a new page | `confluence-docs page create --space-id 131352 --parent-id PARENT --title "Title" --markdown content.md` |
+| Add row to index | `confluence-docs index add --page-id 999 --title "Page Name" --under "Section Heading"` |
+| Validate ADF file | `confluence-docs lint page.json` |
+| Unwrap MCP response | `confluence-docs extract-body < mcp-response.json > body.json` |

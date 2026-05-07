@@ -1,4 +1,4 @@
-// Package setup implements the `lybel-docs setup` sub-command: an interactive
+// Package setup implements the `confluence-docs setup` sub-command: an interactive
 // wizard that guides the user through obtaining and storing Atlassian API
 // credentials, plus --check / --print-config-path / --print-config-format
 // informational modes.
@@ -43,25 +43,25 @@ var defaultHTTPClient httpClient = http.DefaultClient
 
 // ConfigPath returns the platform-appropriate path to the credentials file.
 //
-//   - Linux:   $XDG_CONFIG_HOME/lybel-docs/credentials  (falls back to ~/.config/…)
-//   - macOS:   ~/Library/Application Support/lybel-docs/credentials
-//   - Windows: %AppData%\lybel-docs\credentials
+//   - Linux:   $XDG_CONFIG_HOME/confluence-docs/credentials  (falls back to ~/.config/…)
+//   - macOS:   ~/Library/Application Support/confluence-docs/credentials
+//   - Windows: %AppData%\confluence-docs\credentials
 func ConfigPath() (string, error) {
 	dir, err := os.UserConfigDir()
 	if err != nil {
 		return "", fmt.Errorf("cannot determine config directory: %w", err)
 	}
-	return filepath.Join(dir, "lybel-docs", "credentials"), nil
+	return filepath.Join(dir, "confluence-docs", "credentials"), nil
 }
 
 // legacyConfigPath returns the old hardcoded path used before the
-// cross-platform migration: ~/.config/lybel-docs/credentials.
+// cross-platform migration: ~/.config/confluence-docs/credentials.
 func legacyConfigPath() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".config", "lybel-docs", "credentials"), nil
+	return filepath.Join(home, ".config", "confluence-docs", "credentials"), nil
 }
 
 // ReadCredsFile reads the credentials file at the canonical config path.
@@ -77,14 +77,14 @@ func ReadCredsFile(stderr io.Writer) (email, token string, err error) {
 
 	data, readErr := os.ReadFile(newPath)
 	if readErr != nil && os.IsNotExist(readErr) {
-		// Try legacy path (~/.config/lybel-docs/credentials).
+		// Try legacy path (~/.config/confluence-docs/credentials).
 		// On Linux the legacy and new paths are identical, so skip the
 		// legacy check in that case to avoid double-reading.
 		legacyPath, legacyErr := legacyConfigPath()
 		if legacyErr == nil && legacyPath != newPath {
 			if legacyData, legacyReadErr := os.ReadFile(legacyPath); legacyReadErr == nil {
 				fmt.Fprintf(stderr,
-					"warning: credentials found at legacy path %s — run `lybel-docs setup` to migrate to %s\n",
+					"warning: credentials found at legacy path %s — run `confluence-docs setup` to migrate to %s\n",
 					legacyPath, newPath)
 				data = legacyData
 				readErr = nil
@@ -381,17 +381,17 @@ func runInteractive(prefillEmail, prefillToken string, stdin io.Reader, stdout, 
 	// We still proceed identically — just print a note to stderr.
 	if isHeadless() {
 		fmt.Fprintln(stderr, "(note: headless environment detected — no interactive terminal detected)")
-		fmt.Fprintln(stderr, "      You can also use: lybel-docs setup --email X --token Y")
+		fmt.Fprintln(stderr, "      You can also use: confluence-docs setup --email X --token Y")
 	}
 
-	fmt.Fprintln(stdout, "lybel-docs setup")
+	fmt.Fprintln(stdout, "confluence-docs setup")
 	fmt.Fprintln(stdout, "─────────────────")
-	fmt.Fprintln(stdout, "To use lybel-docs we need an Atlassian API token.")
+	fmt.Fprintln(stdout, "To use confluence-docs we need an Atlassian API token.")
 	fmt.Fprintln(stdout)
 	fmt.Fprintln(stdout, "  1. Open this URL in your browser:")
 	fmt.Fprintln(stdout, "     https://id.atlassian.com/manage-profile/security/api-tokens")
 	fmt.Fprintln(stdout, `  2. Click "Create API token"`)
-	fmt.Fprintln(stdout, "  3. Label it: lybel-docs")
+	fmt.Fprintln(stdout, "  3. Label it: confluence-docs")
 	fmt.Fprintln(stdout, "  4. Copy the token and paste below")
 	fmt.Fprintln(stdout)
 	fmt.Fprintln(stdout, "(Press Ctrl+C any time to cancel)")
@@ -463,8 +463,8 @@ func runInteractive(prefillEmail, prefillToken string, stdin io.Reader, stdout, 
 	fmt.Fprintf(stdout, "connected as %s (%s at %s)\n", name, res.AccountID, cloud)
 	fmt.Fprintln(stdout)
 	fmt.Fprintln(stdout, "Done. You can now use:")
-	fmt.Fprintln(stdout, "  lybel-docs page get/upload/create")
-	fmt.Fprintln(stdout, "  lybel-docs index add/remove/sync")
+	fmt.Fprintln(stdout, "  confluence-docs page get/upload/create")
+	fmt.Fprintln(stdout, "  confluence-docs index add/remove/sync")
 	return ExitOK, nil
 }
 
