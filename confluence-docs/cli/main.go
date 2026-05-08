@@ -2507,42 +2507,65 @@ func runPageRewrite(args []string, stdout, stderr io.Writer) (int, error) {
 		report = append(report, rewriteReportLine{"✓", "replaced intro"})
 	}
 
-	// 2. Walk markdown sections in order. For each:
-	//    - if matched in page (level+title): emit replace-section op
-	//    - if not: would-add → optionally append op
-	for i, s := range mdSections {
-		key := mdHeadingKey(s.level, s.title)
-		body := s.fullText() // includes heading line + body
+	// 2. Walk markdown sections in order, but emit ops only for *outermost*
+	//    sections — sections at the shallowest level present in the markdown.
+	//    Each outermost section's fragment bundles all of its deeper-level
+	//    descendants (sub-headings + their bodies) until the next same-or-
+	//    shallower-level heading.
+	//
+	//    Why: replace-section uses ADF section bounds, which include the
+	//    heading + everything until the next heading of equal-or-higher
+	//    level. So replace-section on an h2 wipes the h2 and all its h3
+	//    children. If we emit a separate replace-section for each h3, the
+	//    parent's op runs first and removes those h3s; subsequent h3 ops
+	//    fail with "section not found". Bundling fixes this.
+	bundles := bundleOutermostSections(mdSections)
+	mdOutermostLevel := 0
+	if len(bundles) > 0 {
+		mdOutermostLevel = bundles[0].level
+	}
+
+	for i, b := range bundles {
 		fragName := fmt.Sprintf("section-%d.md", i)
-		path, err := writeFrag(fragName, body)
+		path, err := writeFrag(fragName, b.body)
 		if err != nil {
 			fmt.Fprintln(stderr, "writing section frag:", err)
 			return exitUnknownErr, err
 		}
+		key := mdHeadingKey(b.level, b.title)
 		if pageHeadingSet[key] {
 			ops = append(ops, multiOp{
 				Kind:     "replace-section",
-				Heading:  s.title,
-				AtLevel:  s.level,
+				Heading:  b.title,
+				AtLevel:  b.level,
 				Fragment: path,
 			})
 			report = append(report, rewriteReportLine{"✓",
-				fmt.Sprintf("replaced section %q (h%d)", s.title, s.level)})
+				fmt.Sprintf("replaced section %q (h%d)", b.title, b.level)})
 		} else {
 			if allowAdd {
 				ops = append(ops, multiOp{Kind: "append", Fragment: path})
 				report = append(report, rewriteReportLine{"+",
-					fmt.Sprintf("added section %q (h%d) at end", s.title, s.level)})
+					fmt.Sprintf("added section %q (h%d) at end", b.title, b.level)})
 			} else {
 				report = append(report, rewriteReportLine{"⚠",
-					fmt.Sprintf("would add: %q (h%d) [pass --allow-add to apply]", s.title, s.level)})
+					fmt.Sprintf("would add: %q (h%d) [pass --allow-add to apply]", b.title, b.level)})
 				wouldAdd++
 			}
 		}
 	}
 
 	// 3. Headings in page but NOT in markdown → would-remove (or remove if flag).
+	//    Only consider page headings at the *outermost* markdown level. Deeper
+	//    page headings inside a section being replaced are removed implicitly
+	//    when the parent's replace-section op runs (its fragment doesn't
+	//    contain them). Emitting an explicit delete-section for a child
+	//    heading would fail because the heading is already gone after the
+	//    parent's replace.
 	for _, h := range pageHeadings {
+		if h.level != mdOutermostLevel {
+			continue
+		}
 		key := pageHeadingKey(h)
 		if mdHeadingSet[key] {
 			continue
@@ -2630,6 +2653,64 @@ func countReports(rs []rewriteReportLine, m string) int {
 		}
 	}
 	return n
+}
+
+// sectionBundle represents an outermost markdown section with all of its
+// deeper-level descendants serialized into a single fragment body.
+//
+// `runPageRewrite` emits one op per bundle (rather than one per mdSection)
+// so that nested h3+ sections inside an h2 don't lose to the parent's
+// `replace-section` op (which would wipe them by ADF section bounds).
+type sectionBundle struct {
+	level int    // shallowest (outermost) level in the markdown
+	title string // heading title at that outermost level
+	body  string // serialized fragment: heading + body + nested children
+}
+
+// bundleOutermostSections groups flat-list mdSections into bundles where
+// each bundle is one outermost section + all of its deeper-level descendants
+// (until the next same-or-shallower-level heading).
+//
+// "Outermost level" = shallowest level present in mdSections. All sections
+// at that level become bundle roots; deeper-level sections are absorbed
+// into the preceding root's body. If the markdown has only h3+ sections
+// (no h2), the shallowest level present is used and those become roots.
+func bundleOutermostSections(sections []mdSection) []sectionBundle {
+	if len(sections) == 0 {
+		return nil
+	}
+	outermost := sections[0].level
+	for _, s := range sections {
+		if s.level < outermost {
+			outermost = s.level
+		}
+	}
+	var bundles []sectionBundle
+	i := 0
+	for i < len(sections) {
+		s := sections[i]
+		if s.level != outermost {
+			// Orphan deeper-level section before any outermost root —
+			// treat as its own root (same effect as bundle of one).
+			bundles = append(bundles, sectionBundle{level: s.level, title: s.title, body: s.fullText()})
+			i++
+			continue
+		}
+		var parts []string
+		parts = append(parts, s.fullText())
+		j := i + 1
+		for j < len(sections) && sections[j].level > s.level {
+			parts = append(parts, sections[j].fullText())
+			j++
+		}
+		bundles = append(bundles, sectionBundle{
+			level: s.level,
+			title: s.title,
+			body:  strings.Join(parts, ""),
+		})
+		i = j
+	}
+	return bundles
 }
 
 // mdSection is a markdown section parsed by splitMarkdownByHeadings.

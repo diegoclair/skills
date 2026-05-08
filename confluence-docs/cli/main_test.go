@@ -872,6 +872,73 @@ func TestSplitMarkdownByHeadings_FullText(t *testing.T) {
 	}
 }
 
+func TestBundleOutermostSections_BundlesH3IntoH2(t *testing.T) {
+	// Regression test for the "page rewrite wipes h3 children" bug: when md
+	// has h2 A with h3 children B and C, then h2 D, we want TWO bundles
+	// (A and D), with A's body containing both A's heading and B/C's full
+	// text. Otherwise replace-section A would wipe B and C, and subsequent
+	// replace-section ops for B/C would fail with "section not found".
+	src := []byte("## A\n\nbody A\n\n### B\n\nbody B\n\n### C\n\nbody C\n\n## D\n\nbody D\n")
+	_, sections, _ := splitMarkdownByHeadings(src)
+	if len(sections) != 4 {
+		t.Fatalf("want 4 mdSections, got %d", len(sections))
+	}
+	bundles := bundleOutermostSections(sections)
+	if len(bundles) != 2 {
+		t.Fatalf("want 2 bundles (A, D), got %d", len(bundles))
+	}
+	if bundles[0].title != "A" || bundles[0].level != 2 {
+		t.Errorf("bundle 0 should be h2 A, got %+v", bundles[0])
+	}
+	if bundles[1].title != "D" || bundles[1].level != 2 {
+		t.Errorf("bundle 1 should be h2 D, got %+v", bundles[1])
+	}
+	// Bundle A's body must include the h3 children's headings AND bodies.
+	if !strings.Contains(bundles[0].body, "## A") {
+		t.Errorf("bundle A body should include h2 heading: %q", bundles[0].body)
+	}
+	if !strings.Contains(bundles[0].body, "### B") || !strings.Contains(bundles[0].body, "body B") {
+		t.Errorf("bundle A body should bundle h3 B: %q", bundles[0].body)
+	}
+	if !strings.Contains(bundles[0].body, "### C") || !strings.Contains(bundles[0].body, "body C") {
+		t.Errorf("bundle A body should bundle h3 C: %q", bundles[0].body)
+	}
+	// Bundle D's body must NOT spill into A's children.
+	if strings.Contains(bundles[1].body, "### B") {
+		t.Errorf("bundle D body should not contain B: %q", bundles[1].body)
+	}
+}
+
+func TestBundleOutermostSections_FlatNoChildren(t *testing.T) {
+	// Flat structure (only h2s) should produce N bundles for N sections.
+	src := []byte("## A\nbody A\n## B\nbody B\n## C\nbody C\n")
+	_, sections, _ := splitMarkdownByHeadings(src)
+	bundles := bundleOutermostSections(sections)
+	if len(bundles) != 3 {
+		t.Fatalf("want 3 bundles, got %d", len(bundles))
+	}
+}
+
+func TestBundleOutermostSections_OnlyH3(t *testing.T) {
+	// Markdown with only h3 sections (no h2): outermost level = 3, each h3
+	// becomes its own bundle.
+	src := []byte("### A\nbody A\n### B\nbody B\n")
+	_, sections, _ := splitMarkdownByHeadings(src)
+	bundles := bundleOutermostSections(sections)
+	if len(bundles) != 2 {
+		t.Fatalf("want 2 bundles, got %d", len(bundles))
+	}
+	if bundles[0].level != 3 || bundles[1].level != 3 {
+		t.Errorf("bundles should be at level 3, got %+v / %+v", bundles[0], bundles[1])
+	}
+}
+
+func TestBundleOutermostSections_Empty(t *testing.T) {
+	if got := bundleOutermostSections(nil); got != nil {
+		t.Errorf("expected nil for empty input, got %+v", got)
+	}
+}
+
 // ── applyOp / multi spec validation ────────────────────────────────────────────
 
 func TestValidateMultiOp(t *testing.T) {
