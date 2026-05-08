@@ -70,12 +70,17 @@ EDIT OPERATIONS (exactly one required):
   --delete-section  "Heading"             Remove the heading and its body.
   --table-add-row "Heading" --row "a|b|c" Add a row to the table in the section.
   --table-remove-row "Heading" --match-cell "text"  Remove a row from the table.
+  --table-update-row "Heading" --match-cell "text" --row "a|b|c"  Replace a row.
+  --table-update-cell "Heading" --match-cell "text" --col-name "Header" --value "v"
+                                                   Update a single cell by column name.
 
 EDIT FLAGS:
   -i, --input PATH   Read ADF from PATH instead of stdin. Use - for stdin.
       --at-level N   Match the heading only at level N (1-6). Default: first match.
       --after-row "text"  (--table-add-row) Insert after row whose first cell contains text.
       --if-missing   (--table-add-row) Skip silently if row with same first cell exists.
+      --col-name "Header"  (--table-update-cell) Column header text to identify target cell.
+      --value "text"       (--table-update-cell) New cell content.
       --pretty       Pretty-print the JSON output.
 
 PAGE VERBS:
@@ -88,8 +93,13 @@ PAGE VERBS:
                --section slices the response to a single heading + its body
                (heading + nodes until the next heading of equal-or-higher level).
                Only --format adf|text|markdown work with --section.
-  page upload  --page-id ID --adf FILE [--title TITLE] [--message MSG] [--dry-run]
-               [--cloud SUBDOMAIN] [--email EMAIL] [--token TOKEN]
+  page upload  --page-id ID (--adf FILE | --markdown FILE) [--title TITLE]
+               [--message MSG] [--dry-run] [--cloud SUBDOMAIN] [--email EMAIL] [--token TOKEN]
+               Replace the entire body of an existing page. --markdown is the
+               recommended path for full-page rewrites: write the new content
+               as markdown locally, then upload — single GET (for version) +
+               single PUT, no per-section diffing. For surgical edits, prefer
+               'page apply --replace-section' etc.
   page create  --space-id ID --parent-id ID --title TITLE
                [--markdown FILE | --adf FILE] [--cloud SUBDOMAIN]
                [--email EMAIL] [--token TOKEN]
@@ -112,6 +122,8 @@ PAGE VERBS:
                  --delete-section  "Heading"
                  --table-add-row    "Heading" --row "a|b|c"        [--after-row "x"] [--if-missing]
                  --table-remove-row "Heading" --match-cell "text"
+                 --table-update-row "Heading" --match-cell "text" --row "a|b|c"
+                 --table-update-cell "Heading" --match-cell "text" --col-name "Header" --value "v"
                  --multi OPS.json    Apply many ops atomically in 1 GET+PUT.
                In --row, '|' is the cell separator. To include a literal pipe
                character inside a cell, escape it with a backslash, e.g.:
@@ -357,6 +369,8 @@ const (
 	opTableAddRow
 	opTableRemoveRow
 	opReplaceIntro
+	opTableUpdateRow
+	opTableUpdateCell
 )
 
 // runEdit parses edit-subcommand flags and applies one section-level or
@@ -379,6 +393,8 @@ func runEdit(args []string, stdin io.Reader, stdout, stderr io.Writer) (int, err
 		rowText      string
 		afterRow     string
 		matchCell    string
+		colName      string
+		newValue     string
 		ifMissing    bool
 		// positionals collects non-flag arguments (only used for fragment path)
 		positionals []string
@@ -533,6 +549,46 @@ func runEdit(args []string, stdin io.Reader, stdout, stderr io.Writer) (int, err
 			heading = args[i+1]
 			i++
 
+		case "--table-update-row":
+			if err := setOp(opTableUpdateRow); err != nil {
+				fmt.Fprintln(stderr, err)
+				return exitInputErr, errInvalidUsage
+			}
+			if i+1 >= len(args) {
+				fmt.Fprintln(stderr, a, `requires "Heading"`)
+				return exitInputErr, errInvalidUsage
+			}
+			heading = args[i+1]
+			i++
+
+		case "--table-update-cell":
+			if err := setOp(opTableUpdateCell); err != nil {
+				fmt.Fprintln(stderr, err)
+				return exitInputErr, errInvalidUsage
+			}
+			if i+1 >= len(args) {
+				fmt.Fprintln(stderr, a, `requires "Heading"`)
+				return exitInputErr, errInvalidUsage
+			}
+			heading = args[i+1]
+			i++
+
+		case "--col-name":
+			if i+1 >= len(args) {
+				fmt.Fprintln(stderr, "flag --col-name requires a value")
+				return exitInputErr, errInvalidUsage
+			}
+			colName = args[i+1]
+			i++
+
+		case "--value":
+			if i+1 >= len(args) {
+				fmt.Fprintln(stderr, "flag --value requires a value")
+				return exitInputErr, errInvalidUsage
+			}
+			newValue = args[i+1]
+			i++
+
 		default:
 			if strings.HasPrefix(a, "-") {
 				fmt.Fprintln(stderr, "unknown flag:", a)
@@ -565,6 +621,30 @@ func runEdit(args []string, stdin io.Reader, stdout, stderr io.Writer) (int, err
 	if op == opTableRemoveRow && matchCell == "" {
 		fmt.Fprintln(stderr, "--table-remove-row requires --match-cell \"text\"")
 		return exitInputErr, errInvalidUsage
+	}
+	if op == opTableUpdateRow {
+		if matchCell == "" {
+			fmt.Fprintln(stderr, "--table-update-row requires --match-cell \"text\"")
+			return exitInputErr, errInvalidUsage
+		}
+		if rowText == "" {
+			fmt.Fprintln(stderr, "--table-update-row requires --row \"col1|col2|...\"")
+			return exitInputErr, errInvalidUsage
+		}
+	}
+	if op == opTableUpdateCell {
+		if matchCell == "" {
+			fmt.Fprintln(stderr, "--table-update-cell requires --match-cell \"text\"")
+			return exitInputErr, errInvalidUsage
+		}
+		if colName == "" {
+			fmt.Fprintln(stderr, "--table-update-cell requires --col-name \"Header\"")
+			return exitInputErr, errInvalidUsage
+		}
+		if newValue == "" {
+			fmt.Fprintln(stderr, "--table-update-cell requires --value \"text\"")
+			return exitInputErr, errInvalidUsage
+		}
 	}
 
 	adfBytes, err := readADFInput(input, stdin)
@@ -618,6 +698,10 @@ func runEdit(args []string, stdin io.Reader, stdout, stderr io.Writer) (int, err
 		}
 	case opTableRemoveRow:
 		result, err = adf.TableRemoveRow(doc, heading, atLevel, matchCell)
+	case opTableUpdateRow:
+		result, err = adf.TableUpdateRow(doc, heading, atLevel, matchCell, rowText)
+	case opTableUpdateCell:
+		result, err = adf.TableUpdateCell(doc, heading, atLevel, matchCell, colName, newValue)
 	}
 	if err != nil {
 		fmt.Fprintln(stderr, err)
@@ -913,7 +997,7 @@ func runPageGet(args []string, stdout, stderr io.Writer) (int, error) {
 }
 
 func runPageUpload(args []string, stdout, stderr io.Writer) (int, error) {
-	var pageID, adfFile, title, message string
+	var pageID, adfFile, markdownFile, title, message string
 	var dryRun bool
 
 	remaining, cloud, email, token, err := parseCommonPageFlags(args)
@@ -939,6 +1023,13 @@ func runPageUpload(args []string, stdout, stderr io.Writer) (int, error) {
 			}
 			adfFile = remaining[i+1]
 			i++
+		case "--markdown":
+			if i+1 >= len(remaining) {
+				fmt.Fprintln(stderr, "--markdown requires a file path")
+				return exitInputErr, errInvalidUsage
+			}
+			markdownFile = remaining[i+1]
+			i++
 		case "--title":
 			if i+1 >= len(remaining) {
 				fmt.Fprintln(stderr, "--title requires a value")
@@ -955,6 +1046,20 @@ func runPageUpload(args []string, stdout, stderr io.Writer) (int, error) {
 			i++
 		case "--dry-run":
 			dryRun = true
+		case "-h", "--help":
+			fmt.Fprintln(stdout, "page upload — replace the entire body of an existing page.")
+			fmt.Fprintln(stdout, "")
+			fmt.Fprintln(stdout, "  --page-id ID         target page (required)")
+			fmt.Fprintln(stdout, "  --adf FILE           new body as ADF JSON")
+			fmt.Fprintln(stdout, "  --markdown FILE      new body as markdown (converted to ADF)")
+			fmt.Fprintln(stdout, "                       — exactly one of --adf or --markdown is required")
+			fmt.Fprintln(stdout, "  --title TITLE        new title (omit to preserve current title)")
+			fmt.Fprintln(stdout, "  --message MSG        version comment")
+			fmt.Fprintln(stdout, "  --dry-run            print preview without writing")
+			fmt.Fprintln(stdout, "")
+			fmt.Fprintln(stdout, "Use this verb for full-body replacement (no section-level diffing).")
+			fmt.Fprintln(stdout, "For surgical edits, prefer `page apply --replace-section` etc.")
+			return exitOK, nil
 		default:
 			fmt.Fprintln(stderr, "unknown flag:", a)
 			return exitInputErr, errInvalidUsage
@@ -965,21 +1070,40 @@ func runPageUpload(args []string, stdout, stderr io.Writer) (int, error) {
 		fmt.Fprintln(stderr, "page upload: --page-id is required")
 		return exitInputErr, errInvalidUsage
 	}
-	if adfFile == "" {
-		fmt.Fprintln(stderr, "page upload: --adf FILE is required")
+	if adfFile == "" && markdownFile == "" {
+		fmt.Fprintln(stderr, "page upload: one of --adf or --markdown is required")
+		return exitInputErr, errInvalidUsage
+	}
+	if adfFile != "" && markdownFile != "" {
+		fmt.Fprintln(stderr, "page upload: specify either --adf or --markdown, not both")
 		return exitInputErr, errInvalidUsage
 	}
 
-	adfBytes, err := os.ReadFile(adfFile)
-	if err != nil {
-		fmt.Fprintln(stderr, "reading ADF file:", err)
-		return exitInputErr, err
-	}
-
-	doc, err := adf.UnmarshalDoc(adfBytes)
-	if err != nil {
-		fmt.Fprintln(stderr, "invalid ADF:", err)
-		return exitParseErr, err
+	var doc adf.Node
+	if adfFile != "" {
+		adfBytes, rdErr := os.ReadFile(adfFile)
+		if rdErr != nil {
+			fmt.Fprintln(stderr, "reading ADF file:", rdErr)
+			return exitInputErr, rdErr
+		}
+		parsed, pErr := adf.UnmarshalDoc(adfBytes)
+		if pErr != nil {
+			fmt.Fprintln(stderr, "invalid ADF:", pErr)
+			return exitParseErr, pErr
+		}
+		doc = parsed
+	} else {
+		mdBytes, rdErr := os.ReadFile(markdownFile)
+		if rdErr != nil {
+			fmt.Fprintln(stderr, "reading markdown:", rdErr)
+			return exitInputErr, rdErr
+		}
+		converted, cErr := adf.Convert(mdBytes)
+		if cErr != nil {
+			fmt.Fprintln(stderr, "parse markdown:", cErr)
+			return exitParseErr, cErr
+		}
+		doc = converted
 	}
 
 	client, ok := buildClient(cloud, email, token, stderr)
@@ -1494,6 +1618,8 @@ type multiOp struct {
 	Row       string `json:"row,omitempty"`
 	AfterRow  string `json:"afterRow,omitempty"`
 	MatchCell string `json:"matchCell,omitempty"`
+	ColName   string `json:"colName,omitempty"`
+	Value     string `json:"value,omitempty"`
 	IfMissing bool   `json:"ifMissing,omitempty"`
 }
 
@@ -1534,6 +1660,12 @@ func applyOp(doc adf.Node, op multiOp, fragment []adf.Node) (adf.Node, bool, err
 		return out, false, err
 	case "table-remove-row":
 		out, err := adf.TableRemoveRow(doc, op.Heading, op.AtLevel, op.MatchCell)
+		return out, false, err
+	case "table-update-row":
+		out, err := adf.TableUpdateRow(doc, op.Heading, op.AtLevel, op.MatchCell, op.Row)
+		return out, false, err
+	case "table-update-cell":
+		out, err := adf.TableUpdateCell(doc, op.Heading, op.AtLevel, op.MatchCell, op.ColName, op.Value)
 		return out, false, err
 	default:
 		return doc, false, fmt.Errorf("unknown op kind %q", op.Kind)
@@ -1601,6 +1733,29 @@ func validateMultiOp(op multiOp) error {
 		if op.MatchCell == "" {
 			return fmt.Errorf("table-remove-row requires matchCell")
 		}
+	case "table-update-row":
+		if op.Heading == "" {
+			return fmt.Errorf("table-update-row requires heading")
+		}
+		if op.MatchCell == "" {
+			return fmt.Errorf("table-update-row requires matchCell")
+		}
+		if op.Row == "" {
+			return fmt.Errorf("table-update-row requires row")
+		}
+	case "table-update-cell":
+		if op.Heading == "" {
+			return fmt.Errorf("table-update-cell requires heading")
+		}
+		if op.MatchCell == "" {
+			return fmt.Errorf("table-update-cell requires matchCell")
+		}
+		if op.ColName == "" {
+			return fmt.Errorf("table-update-cell requires colName")
+		}
+		if op.Value == "" {
+			return fmt.Errorf("table-update-cell requires value")
+		}
 	default:
 		return fmt.Errorf("unknown op kind %q", op.Kind)
 	}
@@ -1627,6 +1782,10 @@ func opSummary(op multiOp) string {
 		return fmt.Sprintf("add row to table in %q", op.Heading)
 	case "table-remove-row":
 		return fmt.Sprintf("remove row from table in %q", op.Heading)
+	case "table-update-row":
+		return fmt.Sprintf("update row in table in %q (match %q)", op.Heading, op.MatchCell)
+	case "table-update-cell":
+		return fmt.Sprintf("update cell in table in %q (row %q, col %q)", op.Heading, op.MatchCell, op.ColName)
 	default:
 		return op.Kind
 	}
@@ -1719,6 +1878,8 @@ func runPageApply(args []string, stdout, stderr io.Writer) (int, error) {
 		rowText      string
 		afterRow     string
 		matchCell    string
+		colName      string
+		newValue     string
 		ifMissing    bool
 		multiPath    string
 	)
@@ -1803,6 +1964,20 @@ func runPageApply(args []string, stdout, stderr io.Writer) (int, error) {
 			}
 			matchCell = remaining[i+1]
 			i++
+		case "--col-name":
+			if i+1 >= len(remaining) {
+				fmt.Fprintln(stderr, "--col-name requires a value")
+				return exitInputErr, errInvalidUsage
+			}
+			colName = remaining[i+1]
+			i++
+		case "--value":
+			if i+1 >= len(remaining) {
+				fmt.Fprintln(stderr, "--value requires a value")
+				return exitInputErr, errInvalidUsage
+			}
+			newValue = remaining[i+1]
+			i++
 		case "--if-missing":
 			ifMissing = true
 		case "--append":
@@ -1868,6 +2043,28 @@ func runPageApply(args []string, stdout, stderr io.Writer) (int, error) {
 			}
 			heading = remaining[i+1]
 			i++
+		case "--table-update-row":
+			if err := setOp(opTableUpdateRow); err != nil {
+				fmt.Fprintln(stderr, err)
+				return exitInputErr, errInvalidUsage
+			}
+			if i+1 >= len(remaining) {
+				fmt.Fprintln(stderr, a, `requires "Heading"`)
+				return exitInputErr, errInvalidUsage
+			}
+			heading = remaining[i+1]
+			i++
+		case "--table-update-cell":
+			if err := setOp(opTableUpdateCell); err != nil {
+				fmt.Fprintln(stderr, err)
+				return exitInputErr, errInvalidUsage
+			}
+			if i+1 >= len(remaining) {
+				fmt.Fprintln(stderr, a, `requires "Heading"`)
+				return exitInputErr, errInvalidUsage
+			}
+			heading = remaining[i+1]
+			i++
 		default:
 			fmt.Fprintln(stderr, "unknown flag:", a)
 			return exitInputErr, errInvalidUsage
@@ -1908,6 +2105,28 @@ func runPageApply(args []string, stdout, stderr io.Writer) (int, error) {
 	case opTableRemoveRow:
 		if matchCell == "" {
 			fmt.Fprintln(stderr, "page apply: --table-remove-row requires --match-cell \"text\"")
+			return exitInputErr, errInvalidUsage
+		}
+	case opTableUpdateRow:
+		if matchCell == "" {
+			fmt.Fprintln(stderr, "page apply: --table-update-row requires --match-cell \"text\"")
+			return exitInputErr, errInvalidUsage
+		}
+		if rowText == "" {
+			fmt.Fprintln(stderr, "page apply: --table-update-row requires --row \"col1|col2|...\"")
+			return exitInputErr, errInvalidUsage
+		}
+	case opTableUpdateCell:
+		if matchCell == "" {
+			fmt.Fprintln(stderr, "page apply: --table-update-cell requires --match-cell \"text\"")
+			return exitInputErr, errInvalidUsage
+		}
+		if colName == "" {
+			fmt.Fprintln(stderr, "page apply: --table-update-cell requires --col-name \"Header\"")
+			return exitInputErr, errInvalidUsage
+		}
+		if newValue == "" {
+			fmt.Fprintln(stderr, "page apply: --table-update-cell requires --value \"text\"")
 			return exitInputErr, errInvalidUsage
 		}
 	}
@@ -1980,6 +2199,10 @@ func runPageApply(args []string, stdout, stderr io.Writer) (int, error) {
 			}
 		case opTableRemoveRow:
 			result, opErr = adf.TableRemoveRow(doc, heading, atLevel, matchCell)
+		case opTableUpdateRow:
+			result, opErr = adf.TableUpdateRow(doc, heading, atLevel, matchCell, rowText)
+		case opTableUpdateCell:
+			result, opErr = adf.TableUpdateCell(doc, heading, atLevel, matchCell, colName, newValue)
 		}
 		if opErr != nil {
 			// For section ops, list the current top-level headings to help

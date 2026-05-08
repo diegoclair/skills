@@ -5,6 +5,92 @@ import (
 	"testing"
 )
 
+func TestTableUpdateRow_Replaces(t *testing.T) {
+	doc := tableDoc()
+	updated, err := TableUpdateRow(doc, "Sócios", 0, "Diego", "Diego|999")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	table := updated.Content[1]
+	if len(table.Content) != 2 {
+		t.Fatalf("want 2 rows, got %d", len(table.Content))
+	}
+	row := table.Content[1]
+	if cellText(row.Content[0]) != "Diego" {
+		t.Errorf("want first cell 'Diego', got %q", cellText(row.Content[0]))
+	}
+	if cellText(row.Content[1]) != "999" {
+		t.Errorf("want second cell '999', got %q", cellText(row.Content[1]))
+	}
+}
+
+func TestTableUpdateRow_NoMatch(t *testing.T) {
+	doc := tableDoc()
+	_, err := TableUpdateRow(doc, "Sócios", 0, "Carolina", "Carolina|111")
+	if err == nil {
+		t.Fatalf("expected error for missing row")
+	}
+	if !strings.Contains(err.Error(), "Carolina") {
+		t.Errorf("expected error to mention search text, got %v", err)
+	}
+}
+
+func TestTableUpdateCell_ByColName(t *testing.T) {
+	doc := tableDoc()
+	updated, err := TableUpdateCell(doc, "Sócios", 0, "Diego", "pageId", "abc")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	table := updated.Content[1]
+	row := table.Content[1]
+	if cellText(row.Content[0]) != "Diego" {
+		t.Errorf("first cell should be unchanged, got %q", cellText(row.Content[0]))
+	}
+	if cellText(row.Content[1]) != "abc" {
+		t.Errorf("want second cell 'abc', got %q", cellText(row.Content[1]))
+	}
+}
+
+func TestTableUpdateCell_UnknownColumn(t *testing.T) {
+	doc := tableDoc()
+	_, err := TableUpdateCell(doc, "Sócios", 0, "Diego", "Inexistente", "abc")
+	if err == nil {
+		t.Fatalf("expected error for unknown column")
+	}
+	if !strings.Contains(err.Error(), "Inexistente") {
+		t.Errorf("expected error to mention column name, got %v", err)
+	}
+}
+
+func TestDetectShellExpansionHint_DollarStripped(t *testing.T) {
+	// Page heading "Cálculo (R$200 = R$100k GMV)" → after bash ate $200 and $100k,
+	// CLI receives "Cálculo (R = Rk GMV)". Hint should fire.
+	headings := []string{"Cálculo (R$200 = R$100k GMV)", "Other heading"}
+	hint := detectShellExpansionHint("Cálculo (R = Rk GMV)", headings)
+	if hint == "" {
+		t.Fatalf("expected non-empty hint when headings contain $ patterns matching target with vars stripped")
+	}
+	if !strings.Contains(hint, "single quotes") {
+		t.Errorf("hint should suggest single quotes, got %q", hint)
+	}
+}
+
+func TestDetectShellExpansionHint_TargetHasDollar_NoHint(t *testing.T) {
+	headings := []string{"Cálculo (R$200 GMV)"}
+	hint := detectShellExpansionHint("Cálculo (R$200 GMV)", headings)
+	if hint != "" {
+		t.Errorf("expected empty hint when target already contains $, got %q", hint)
+	}
+}
+
+func TestDetectShellExpansionHint_NoMatch_NoHint(t *testing.T) {
+	headings := []string{"Section", "Another"}
+	hint := detectShellExpansionHint("Foo", headings)
+	if hint != "" {
+		t.Errorf("expected empty hint when no $ patterns relate, got %q", hint)
+	}
+}
+
 // tableDoc builds a doc with two sections, each containing a table.
 //
 //	## Sócios

@@ -214,6 +214,16 @@ confluence-docs page apply --page-id <id> \
 confluence-docs page apply --page-id <id> \
   --table-remove-row "Status atual" --match-cell "Acme Corp"
 
+# Update a single cell (cirurgical — preserves the rest of the table)
+confluence-docs page apply --page-id <id> \
+  --table-update-cell "Status atual" --match-cell "Acme Corp" \
+  --col-name "Status" --value "✅ Done"
+
+# Replace an entire row (for multi-cell updates)
+confluence-docs page apply --page-id <id> \
+  --table-update-row "Status atual" --match-cell "Acme Corp" \
+  --row "Acme Corp|✅ Done|Origem X|fechado"
+
 # Preview without writing
 confluence-docs page apply --page-id <id> \
   --replace-section "Roadmap" --fragment frag.md --dry-run
@@ -379,7 +389,9 @@ Ordered by preference. Always try the cheapest tool that can answer the question
 | Find a page | `search "term"` | MCP `searchConfluenceUsingCql` | — |
 | List children of a category | `page children` | MCP `getPagesInConfluenceSpace` | — |
 | Update a page (single section) | `page apply` | `page get` + `edit` + `page upload` | MCP `getConfluencePage(adf)` + manual + `updateConfluencePage(adf)` |
-| Update a page (table row) | `page apply --table-add-row` / `--table-remove-row` | `page get` + `edit --table-*` + `page upload` | — |
+| Update a page (table row) | `page apply --table-add-row` / `--table-remove-row` / `--table-update-row` | `page get` + `edit --table-*` + `page upload` | — |
+| Update a single table cell | `page apply --table-update-cell --match-cell ROW --col-name COL --value V` | replace whole table section | — |
+| Replace whole page body (full-body rewrite) | `page upload --markdown FILE` | `page upload --adf FILE` | delete+recreate (loses pageId) |
 | Create a new page | `page create --markdown` | `adf` to convert + MCP `createConfluencePage(adf)` | MCP `createConfluencePage(markdown)` |
 | Rename a page | `page move --page-id ID --title "New Title"` | `page get` + `page upload --title "..."` | MCP `updateConfluencePage` |
 | Move a page to a new parent | `page move --page-id ID --parent-id NEW_PARENT` | — | MCP `updateConfluencePage` |
