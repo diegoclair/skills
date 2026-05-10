@@ -199,6 +199,48 @@ case ":$PATH:" in
   *)               USER_BIN_ON_PATH=0 ;;
 esac
 
+# If not on PATH, persist an export line in the user's shell profile so future
+# shells (and Claude's Bash tool) see the binary without further config. Keeps
+# re-runs idempotent via a marker comment, and never touches a profile that
+# already mentions $USER_BIN (might be intentionally commented out).
+PATH_PROFILE_STATE=""   # added | already | already-mentioned | skipped
+PATH_PROFILE_PATH=""
+
+if [ "$USER_BIN_ON_PATH" = "0" ]; then
+  case "${SHELL:-}" in
+    */zsh)
+      PATH_PROFILE_PATH="$HOME/.zshrc"
+      ;;
+    */bash)
+      if [ "$(uname -s)" = "Darwin" ] && [ -f "$HOME/.bash_profile" ]; then
+        PATH_PROFILE_PATH="$HOME/.bash_profile"
+      else
+        PATH_PROFILE_PATH="$HOME/.bashrc"
+      fi
+      ;;
+    *)
+      PATH_PROFILE_PATH="$HOME/.profile"
+      ;;
+  esac
+
+  MARKER="# Added by confluence-docs installer (https://github.com/$REPO)"
+
+  if [ -f "$PATH_PROFILE_PATH" ] && grep -Fq "$MARKER" "$PATH_PROFILE_PATH" 2>/dev/null; then
+    PATH_PROFILE_STATE="already"
+  elif [ -f "$PATH_PROFILE_PATH" ] && grep -Fq "$USER_BIN" "$PATH_PROFILE_PATH" 2>/dev/null; then
+    # User's profile already mentions ~/.local/bin (likely commented out).
+    # Don't surprise them — leave a hint in the summary instead.
+    PATH_PROFILE_STATE="already-mentioned"
+  else
+    {
+      printf '\n%s\n' "$MARKER"
+      printf 'export PATH="$HOME/.local/bin:$PATH"\n'
+    } >> "$PATH_PROFILE_PATH" 2>/dev/null && \
+      PATH_PROFILE_STATE="added" || \
+      PATH_PROFILE_STATE="skipped"
+  fi
+fi
+
 # Skill files (SKILL.md + reference/) are bundled inside the platform zip
 # above and have already been extracted. No separate raw.githubusercontent.com
 # fetches are needed — eliminates an entire round-trip and avoids version
@@ -248,12 +290,31 @@ if [ "$PATH_LINK_OK" = "1" ]; then
   else
     echo ""
     echo "Symlink installed at: $SYMLINK"
-    echo ""
-    echo "Note: $USER_BIN is NOT on your \$PATH. To enable the bare \`confluence-docs\`"
-    echo "command, add this to your shell profile (~/.bashrc, ~/.zshrc, ...):"
-    echo "  export PATH=\"$USER_BIN:\$PATH\""
-    echo "Then start a new shell, or for the current shell run:"
-    echo "  export PATH=\"$USER_BIN:\$PATH\""
+    case "$PATH_PROFILE_STATE" in
+      added)
+        echo ""
+        echo "Added to $PATH_PROFILE_PATH:"
+        echo "  export PATH=\"\$HOME/.local/bin:\$PATH\""
+        echo ""
+        echo "Open a new terminal — or run \`source $PATH_PROFILE_PATH\` — to use \`confluence-docs\` directly."
+        ;;
+      already)
+        echo ""
+        echo "$PATH_PROFILE_PATH already has the entry from a previous install."
+        echo "Open a new terminal, or run: source $PATH_PROFILE_PATH"
+        ;;
+      already-mentioned)
+        echo ""
+        echo "Note: $USER_BIN is referenced in $PATH_PROFILE_PATH but not on your live \$PATH."
+        echo "It may be commented out — uncomment it, or run:"
+        echo "  export PATH=\"$USER_BIN:\$PATH\""
+        ;;
+      *)
+        echo ""
+        echo "Note: $USER_BIN is NOT on your \$PATH. Add this to your shell profile:"
+        echo "  export PATH=\"$USER_BIN:\$PATH\""
+        ;;
+    esac
   fi
 else
   echo ""
