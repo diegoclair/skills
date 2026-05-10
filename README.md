@@ -52,83 +52,9 @@ O Claude usa o CLI quando ele existe e cai no MCP automaticamente quando não. R
 
 ## Como instalar
 
-Três caminhos, do mais fácil pro mais técnico.
+> **Resumo:** rode o instalador, configure credenciais, pronto.
 
-### Opção A — peça pra uma IA instalar pra você (mais fácil)
-
-Se você não está confortável com terminal, abra qualquer agente de IA (Claude, Gemini, ChatGPT, Cursor, etc.) e cole esta mensagem:
-
-> Quero instalar a skill `confluence-docs` no meu computador. A documentação está em https://github.com/lybel-app/skills. Lê o README, identifica meu sistema operacional, roda os comandos de instalação, e me guia pela configuração de credenciais Atlassian no final.
-
-A IA vai ler este README, detectar seu OS, rodar o instalador, e te ajudar a gerar o token Atlassian + configurar tudo. Ver [instruções para agentes de IA](#instruções-para-agentes-de-ia--instalação-assistida) abaixo (a IA usa essa seção como roteiro).
-
-### Opção B — você mesmo no terminal
-
-1. **Instale o Claude Desktop** — baixe em [claude.ai/download](https://claude.ai/download) e faça login com sua conta Lybel.
-2. **Rode o instalador:**
-
-   **macOS/Linux:**
-   ```bash
-   curl -fsSL https://raw.githubusercontent.com/lybel-app/skills/main/confluence-docs/install/install.sh | bash
-   ```
-
-   **Windows (PowerShell):**
-   ```powershell
-   iwr -useb https://raw.githubusercontent.com/lybel-app/skills/main/confluence-docs/install/install.ps1 | iex
-   ```
-
-3. **Configure credenciais Atlassian:**
-   - Gere um API token em https://id.atlassian.com/manage-profile/security/api-tokens (botão **Create API token**, dá um nome qualquer, copia o valor — só aparece uma vez).
-   - Rode: `confluence-docs setup` (ele pergunta email + token interativamente).
-   - Valida: `confluence-docs setup --check` deve retornar `credentials valid`.
-
-4. **Reabra o Claude Desktop**, vá em **Code → Settings → Integrations** e conecte sua conta Atlassian via OAuth (necessário pro fallback MCP, caso a CLI falhe).
-
-5. **Pronto.** Pergunte coisas como:
-   - *"onde fica a página de parceiros?"*
-   - *"cria uma ata de reunião com o Itaú"*
-   - *"quais aceleradoras a Lybel está participando?"*
-
-> **Para atualizar:** rode `confluence-docs update`. Pega a última release do GitHub, mantém credenciais e cache.
-
-### Opção C — caminho dev (clone do repo)
-
-```bash
-# 1. Clone
-git clone https://github.com/lybel-app/skills.git lybel-skills
-cd lybel-skills
-
-# 2. Symlink da skill para o diretório do Claude
-ln -s "$(pwd)/confluence-docs" ~/.claude/skills/confluence-docs
-
-# 3. (Recomendado) Build do CLI Go — habilita digest/apply/search e reduz custo de tokens
-cd confluence-docs/cli && make install
-# (Build padrão instala em ~/.claude/skills/confluence-docs/bin/confluence-docs)
-# Configurar credenciais Atlassian:
-confluence-docs setup
-cd -
-
-# 4. Reinicie o Claude Code
-#    A skill aparece automaticamente quando você faz uma pergunta relevante.
-```
-
-No Windows, troque o `ln -s` por um **diretório junction** (`mklink /J`) ou copie a pasta.
-
----
-
-## Instruções para agentes de IA — instalação assistida
-
-> Esta seção é um **roteiro pra agentes de IA** (Claude, Gemini, ChatGPT, Cursor, etc.) que estejam ajudando um usuário não-técnico a instalar a skill. Pula esta seção se você for humano — vê a [Opção B](#opção-b--você-mesmo-no-terminal) acima.
-
-### Pré-requisitos
-- Usuário tem conta Atlassian (a mesma que usa pra acessar `lybel.atlassian.net`).
-- Internet ativa pra baixar do GitHub Releases.
-
-### Passo 1 — Detectar sistema operacional
-- macOS / Linux → use `install.sh` (bash).
-- Windows → use `install.ps1` (PowerShell 5+).
-
-### Passo 2 — Rodar instalador
+### 1. Rode o instalador
 
 **macOS / Linux:**
 ```bash
@@ -140,58 +66,98 @@ curl -fsSL https://raw.githubusercontent.com/lybel-app/skills/main/confluence-do
 iwr -useb https://raw.githubusercontent.com/lybel-app/skills/main/confluence-docs/install/install.ps1 | iex
 ```
 
-O instalador baixa o último release, descompacta em `~/.claude/skills/confluence-docs/` (ou `%USERPROFILE%\.claude\skills\confluence-docs\` no Windows), e adiciona o binário ao PATH.
+O script:
+- Baixa o último release pra sua plataforma e instala em `~/.claude/skills/confluence-docs/` (Linux/macOS) ou `%USERPROFILE%\.claude\skills\confluence-docs\` (Windows).
+- Coloca o binário no PATH automaticamente — adiciona uma linha no seu `~/.zshrc` / `~/.bashrc` / `~/.profile` (ou no User PATH no Windows). Idempotente — re-rodar não duplica.
+- Imprime no final se as credenciais já estão configuradas.
 
-### Passo 3 — Configurar credenciais (não interativo)
+Se o instalador alterou seu shell profile, **abra um terminal novo** (ou rode `source ~/.zshrc`) pra `confluence-docs` aparecer no PATH da sessão atual.
 
-A skill precisa de **email Atlassian** + **API token**. **Não rode `confluence-docs setup` sem flags em sessão de IA** — ele pede input interativo no stdin e trava.
+### 2. Gere um token Atlassian
 
-**3.1 — Guie o usuário a gerar o token:**
-1. Diga: "Abra https://id.atlassian.com/manage-profile/security/api-tokens em uma aba nova."
-2. "Clique em **Create API token**, dê um nome qualquer (ex: `confluence-docs`)."
-3. "Copia o token — atenção: ele só aparece uma vez. Cola aqui."
+1. Acesse https://id.atlassian.com/manage-profile/security/api-tokens.
+2. Clique em **Create API token**, dá um nome qualquer (ex: `confluence-docs`).
+3. **Copie o token na hora** — ele só aparece uma vez.
 
-**3.2 — Pergunte o email** se ainda não souber (provavelmente é o email corporativo do usuário, ex: `nome@lybel.com.br` ou `nome@novapaytech.com`).
+### 3. Salve as credenciais
 
-**3.3 — Salve as credenciais não-interativamente:**
 ```bash
-confluence-docs setup --email "USER_EMAIL" --token "USER_TOKEN"
+confluence-docs setup
 ```
 
-### Passo 4 — Validar
+O wizard pede seu email Atlassian e o token, valida com a API, e grava em `~/.config/confluence-docs/credentials` (ou `%APPDATA%\confluence-docs\credentials` no Windows) com permissão `0600`.
+
+Se preferir não interativo (CI, automação, ou agente de IA):
+
+```bash
+confluence-docs setup --email "seu@email.com" --token "ATATT3xFf..."
+```
+
+Valida no final:
 
 ```bash
 confluence-docs setup --check
+# deve imprimir: credentials valid (Seu Nome)
 ```
 
-Códigos de saída:
-- `0` — credenciais válidas, prossegue.
-- `1` — arquivo de credenciais não foi salvo (volta no Passo 3.3).
-- `2` — credenciais inválidas (token errado ou revogado — usuário gera novo token).
-- `3` — erro de rede (rede do usuário tá ruim, tenta de novo).
+### 4. Use
 
-### Passo 5 — Smoke test
+Reabra o Claude Code (ou Claude Desktop) e pergunte coisas como:
+
+- *"onde fica a página de parceiros?"*
+- *"cria uma ata de reunião com o Itaú"*
+- *"quais aceleradoras a Lybel está participando?"*
+
+A skill aparece automaticamente quando a pergunta bate com o escopo dela.
+
+> **Atualizar:** rode `confluence-docs update`. Pega a última release do GitHub, mantém credenciais e cache intactos.
+>
+> **Desinstalar:** apague `~/.claude/skills/confluence-docs/` e `~/.config/confluence-docs/` (Linux/macOS) ou as pastas equivalentes no Windows. Remover a linha que o instalador adicionou no seu shell profile é opcional.
+
+---
+
+## Instalação assistida por IA
+
+Não está confortável com terminal? Abra qualquer agente de IA (Claude, Gemini, ChatGPT, Cursor, …) e cole:
+
+> Quero instalar a skill `confluence-docs`. Segue o roteiro em https://github.com/lybel-app/skills/blob/main/confluence-docs/INSTALL_FOR_AI.md — detecta meu sistema operacional, roda os comandos, e me guia pela geração do token Atlassian no final.
+
+O arquivo [`INSTALL_FOR_AI.md`](./confluence-docs/INSTALL_FOR_AI.md) é um runbook pensado pra agentes — exit codes determinísticos, regras de segurança pro token, e troubleshooting passo a passo. Você não precisa lê-lo, só passar a URL pro agente.
+
+---
+
+## Instalação dev (contribuir com a skill)
+
+> Esse caminho é só pra quem vai **modificar** a skill. Se você só quer usar, fica na seção [Como instalar](#como-instalar) acima.
 
 ```bash
-confluence-docs home --refresh
+git clone https://github.com/lybel-app/skills.git
+cd skills/confluence-docs/cli
+
+# Build + install do binário no diretório do Claude.
+make install
+# Instala em ~/.claude/skills/confluence-docs/bin/confluence-docs por padrão.
+# Override: make install INSTALL_DIR=/custom/path
+
+# Copie SKILL.md + reference/ pro mesmo diretório (o instalador faz isso
+# automaticamente; manualmente:)
+mkdir -p ~/.claude/skills/confluence-docs/reference
+cp ../SKILL.md ~/.claude/skills/confluence-docs/SKILL.md
+cp ../reference/*.md ~/.claude/skills/confluence-docs/reference/
+
+# Configure credenciais e valida.
+~/.claude/skills/confluence-docs/bin/confluence-docs setup
+~/.claude/skills/confluence-docs/bin/confluence-docs setup --check
 ```
 
-Deve baixar a Home do Confluence Lybel e cachear localmente. Se imprimir o digest da Home sem erro, instalação completa.
+Se preferir desenvolver editando os arquivos no clone (sem precisar copiar a cada mudança), use um **symlink** apontando o clone para o diretório do Claude:
 
-### Troubleshooting comum
+```bash
+mkdir -p ~/.claude/skills
+ln -s "$(pwd)/.." ~/.claude/skills/confluence-docs
+```
 
-| Sintoma | Causa provável | Resolução |
-|---|---|---|
-| `command not found: confluence-docs` | PATH ainda não atualizado | Pede pro usuário fechar e reabrir o terminal. Alternativa: rode com path absoluto `~/.claude/skills/confluence-docs/bin/confluence-docs ...` |
-| `Permission denied` no Linux/macOS | Binário sem flag de execução | `chmod +x ~/.claude/skills/confluence-docs/bin/confluence-docs` |
-| Windows SmartScreen bloqueia | Binário sem assinatura | Usuário marca "Run anyway" no aviso |
-| `setup --check` retorna 2 | Token revogado ou digitado errado | Gera novo token (Passo 3.1) e refaz Passo 3.3 |
-| `setup --check` retorna 3 | Sem internet, ou Atlassian fora | Tentar de novo em alguns minutos |
-
-### O que NÃO fazer
-- Não rode `confluence-docs setup` (sem flags) em sessão de IA — é interativo, vai travar.
-- Não tente fazer `git clone` do repo pro caminho fácil — isso é a Opção C (dev). O usuário não-técnico não precisa do código fonte.
-- Não suba o token do usuário pra nenhum lugar (chat, log, screenshot, repo). Confidencial — o usuário cola só pro `setup` salvar localmente.
+(No Windows, use `mklink /J` em vez de `ln -s`.) Cuidado: alguns ambientes sandbox de IA bloqueiam symlinks dentro de `~/.claude/skills/`. Se for o caso, copie em vez de symlinkar.
 
 ---
 
@@ -296,7 +262,7 @@ lybel-skills/
 1. Cria `<nome-da-skill>/SKILL.md` seguindo o formato de [skills.md](https://docs.claude.com/en/docs/claude-code/skills).
 2. Adiciona arquivos de referência em `<nome>/reference/`.
 3. Se a skill precisa de CLI, cria `<nome>/cli/` com `main.go` + `Makefile`. Se for só prompts/MCP, pula.
-4. Testa localmente via symlink (veja [Opção C](#opção-c--caminho-dev-clone-do-repo)).
+4. Testa localmente via symlink (veja [Instalação dev](#instalação-dev-contribuir-com-a-skill)).
 5. Abre PR. Após merge, criar tag `vX.Y.Z` dispara o workflow de release que monta os ZIPs cross-platform e publica no GitHub Releases automaticamente.
 
 ### Convenções
