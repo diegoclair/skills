@@ -4,38 +4,39 @@
 [![Latest Release](https://img.shields.io/github/v/release/lybel-app/skills?color=11C47E&label=release)](https://github.com/lybel-app/skills/releases/latest)
 [![Claude Skills](https://img.shields.io/badge/Claude-Skills-11C47E)](https://docs.claude.com/en/docs/claude-code/skills)
 
-> Skills open-source do Claude mantidas pelo time da **Lybel**. Funcionam pra qualquer empresa — basta apontar pro seu Confluence/Jira/etc. PRs bem-vindos.
+> Open-source Claude Skills maintained by the **Lybel** team. Works for any company — point each skill at your own Confluence / Jira / etc. PRs welcome.
 
-## Skills disponíveis
+## Available skills
 
-| Skill | Resumo | Docs |
+| Skill | Summary | Docs |
 |---|---|---|
-| **`confluence-docs`** | Busca, cria e atualiza páginas do Confluence em linguagem natural. Usa CLI Go local que devolve digests/sections em vez do ADF inteiro — 10–50× mais barato em tokens que o MCP puro (que fica como fallback). | [SKILL.md](./confluence-docs/SKILL.md) |
+| **`confluence-docs`** | Search, create, classify and update Confluence Cloud pages in natural language. Ships a local Go CLI that returns page digests / single sections instead of full ADF bodies — 10–50× cheaper in tokens than the raw MCP path (which remains as fallback). Includes a `km` subcommand that consolidates a whole space into a typed Knowledge Map, owner `@mention` resolution, real Confluence labels from `:::properties` tags, smart links, and a canonical 5-doc-types spec (`reference/doc-types.md`). | [SKILL.md](./confluence-docs/SKILL.md) |
 
-Próximas candidatas: `jira-tickets`, `figma-files`, `analytics`.
-
----
-
-## Como funciona
-
-Skills aqui são **timeless**: o repo só guarda estrutura, workflows e templates — nenhum dado da Lybel (advisors, investidores, page IDs específicos). Em runtime, o Claude consulta a Home do Confluence (pageId `164232`), que é a fonte da verdade da taxonomia e do índice. Por isso o repo é safe pra ficar público.
-
-**Pra adaptar pra outra empresa:** troque `cloudId` e o pageId da Home no frontmatter de [`SKILL.md`](./confluence-docs/SKILL.md), e crie a Home no seu Confluence seguindo o mesmo padrão. Veja a seção [Contribuindo](#contribuindo) pra entender por que nenhum dado de empresa específica vive aqui.
-
-### Por que CLI em vez de só MCP
-
-O MCP da Atlassian devolve ADF inteiro de cada página (10–40 KB de JSON). Em sessão de research + edição, queima a janela. O CLI vive em `~/.claude/skills/confluence-docs/bin/` e oferece:
-
-- **`home --refresh`** — baixa a Home 1× por sessão e cacheia local. Queries seguintes são offline.
-- **`page digest --page-id ID`** — título, versão, outline e word count em ~500 bytes.
-- **`page apply --replace-section`** — edita seção atomicamente (GET → PUT com retry 409). Macros fora da seção alterada são preservadas byte-a-byte.
-- **`search "termo"`** — CQL com saída TSV compacta.
-
-Toda escrita faz GET fresh antes do PUT, então o cache nunca causa sobrescrita.
+Next candidates: `jira-tickets`, `figma-files`, `analytics`.
 
 ---
 
-## Instalação
+## How it works
+
+Skills here are **timeless**: the repo only ships structure, workflows, templates, and a canonical spec. **Zero project-specific data** (no advisors, no investors, no hardcoded page IDs). At runtime, Claude reads each project's Confluence Home page, which is the source of truth for taxonomy and the page index. That is why this repo is safe to be public.
+
+**To adopt for your company:** run `confluence-docs setup` once — the wizard asks for your Atlassian email, API token, and Confluence subdomain (e.g. `mycompany` for `mycompany.atlassian.net`) and writes them to a credentials file. Create a Home page in your Confluence space following the same conventions described in [SKILL.md](./confluence-docs/SKILL.md), then point your team at the skill. See [Contributing](#contributing) for why no company-specific data is allowed in the skill body.
+
+### Why CLI in addition to MCP
+
+The Atlassian MCP returns the full ADF body of every page (10–40 KB of JSON). In a research + edit session, that burns the context window fast. The CLI lives in `~/.claude/skills/confluence-docs/bin/` and offers:
+
+- **`home --refresh`** — fetches the Home once per hour and caches locally; subsequent queries are offline.
+- **`page digest --page-id ID`** — title, version, outline, macro count, word count — all in ~500 bytes.
+- **`page apply --replace-section`** — atomic section edit (GET → PUT with 409 retry). Macros outside the targeted section are preserved byte-for-byte.
+- **`search "term"`** — CQL with compact TSV output.
+- **`new <type>`**, **`check`**, **`km generate`** — doc-type templates, fuzzy duplicate detection before creating, and automated Knowledge Map regeneration.
+
+Every write does a fresh GET before the PUT, so the cache never causes accidental overwrite.
+
+---
+
+## Installation
 
 **macOS / Linux:**
 ```bash
@@ -47,89 +48,89 @@ curl -fsSL https://raw.githubusercontent.com/lybel-app/skills/main/confluence-do
 iwr -useb https://raw.githubusercontent.com/lybel-app/skills/main/confluence-docs/install/install.ps1 | iex
 ```
 
-O instalador é idempotente: baixa o último release, coloca em `~/.claude/skills/confluence-docs/`, adiciona ao PATH e reporta se já tem credencial. **Abra um terminal novo** depois (ou `source ~/.zshrc`) pra o PATH pegar.
+The installer is idempotent: it pulls the latest release, places everything in `~/.claude/skills/confluence-docs/`, adds the binary to `$PATH`, and reports whether credentials are already configured. **Open a new shell** afterwards (or `source ~/.zshrc`) for the PATH change to take effect.
 
-Depois, gere um token em https://id.atlassian.com/manage-profile/security/api-tokens e configure:
+Then create an Atlassian token at https://id.atlassian.com/manage-profile/security/api-tokens and configure:
 
 ```bash
-confluence-docs setup                      # wizard interativo
-confluence-docs setup --email X --token Y  # não-interativo (CI/agente)
-confluence-docs setup --check              # valida
+confluence-docs setup                                      # interactive wizard (asks email + token + subdomain)
+confluence-docs setup --email X --token Y                  # non-interactive (CI / agent)
+confluence-docs setup --check                              # validates current credentials
 ```
 
-Reabra o Claude Code e pergunte: *"onde fica a página de governança?"*, *"cria uma página de parceiro novo"*, *"quais aceleradoras a Lybel está mapeando?"*.
+Reopen Claude Code and ask: *"where is the governance page?"*, *"create a new partner page"*, *"which competitors are we tracking?"*.
 
-**Atualizar:** `confluence-docs update`. **Desinstalar:** apaga `~/.claude/skills/confluence-docs/` e `~/.config/confluence-docs/`.
+**Update:** `confluence-docs update`. **Uninstall:** delete `~/.claude/skills/confluence-docs/` and `~/.config/confluence-docs/`.
 
-### Instalação assistida por IA
+### AI-assisted installation
 
-Cola num agente de IA qualquer:
+Paste this into any AI agent:
 
-> Quero instalar a skill `confluence-docs`. Segue o roteiro em https://github.com/lybel-app/skills/blob/main/confluence-docs/INSTALL_FOR_AI.md
+> I want to install the `confluence-docs` skill. Follow the runbook at https://github.com/lybel-app/skills/blob/main/confluence-docs/INSTALL_FOR_AI.md
 
-O [`INSTALL_FOR_AI.md`](./confluence-docs/INSTALL_FOR_AI.md) é um runbook com exit codes determinísticos e regras de segurança pro token.
+The [`INSTALL_FOR_AI.md`](./confluence-docs/INSTALL_FOR_AI.md) is a runbook with deterministic exit codes and token-handling safety rules.
 
 ---
 
-## Uso típico
+## Typical usage
 
 ```
-Você: onde fica a página de governança?
+You: where is the governance page?
 
-Claude: Achei no Confluence:
-- Governança Lybel — estrutura de comitês, cadência de board e RACI
-  https://lybel.atlassian.net/wiki/spaces/lybel/pages/229891
+Claude: Found it on Confluence:
+- Governance — committee structure, board cadence, RACI
+  https://mycompany.atlassian.net/wiki/spaces/<space>/pages/229891
 ```
 
-A skill ativa automaticamente quando a pergunta bate com o escopo (busca, criação, listagem, update, status de página).
+The skill activates automatically when the prompt matches its scope (search, create, list, update, page status).
 
 ---
 
-## Desenvolvendo
+## Developing
 
 ```
-lybel-skills/
-├── <nome-da-skill>/
-│   ├── SKILL.md          # Frontmatter + instruções
-│   ├── reference/        # Templates, taxonomia, workflows
-│   ├── cli/              # (opcional) CLI Go que a skill usa
-│   ├── install/          # (opcional) install.sh / install.ps1
-│   └── bin/              # Gerado por make install — gitignored
-├── .github/workflows/release.yml   # Tag v* → build cross-platform + Release
+skills/
+├── <skill-name>/
+│   ├── SKILL.md          # Frontmatter + instructions
+│   ├── reference/        # Canonical spec, workflows, bootstrap
+│   ├── cli/              # (optional) Go CLI the skill drives
+│   ├── install/          # (optional) install.sh / install.ps1
+│   └── bin/              # Generated by `make install` — gitignored
+├── .github/workflows/release.yml   # Tag v* → cross-platform build + GitHub Release
 └── README.md
 ```
 
-Cada skill é self-contained. Sem CLI? Pula `cli/` e `install/` — `SKILL.md` + `reference/` é o mínimo. Release assets são gerados pelo CI, nunca commitados.
+Each skill is self-contained. No CLI? Skip `cli/` and `install/` — `SKILL.md` + `reference/` is the minimum. Release assets are produced by CI and never committed.
 
-## Contribuindo
+## Contributing
 
-Este repo é open-source e as skills aqui têm que funcionar pra qualquer empresa que clonar. Regras pra PR:
+This repo is open-source and the skills here must work for any company that clones them. PR rules:
 
-- **Skills devem ser company-agnostic.** Nenhum dado específico da Lybel (ou de qualquer empresa) hardcoded no corpo da skill, em `reference/`, ou no código do CLI. Sem nomes de pessoas, advisors, investidores, parceiros, page IDs específicos, URLs de instâncias, listas de produtos, etc.
-- **Defaults configuráveis.** Se a skill precisa de um valor pra funcionar (cloudId, pageId raiz, domínio Atlassian), expõe via frontmatter ou variável de ambiente. O default pode apontar pra Lybel — mas tem que estar documentado como trocar.
-- **Padrão "Home page como fonte da verdade".** Pra dados que mudam (taxonomia, índice, lista de itens), a skill deve **consultar o sistema externo em runtime** (Confluence, Jira, etc.), não cachear no repo. É isso que mantém o repo timeless e safe pra deixar público.
-- **Exceções OK:** o README, CHANGELOG, e commits podem mencionar Lybel à vontade — é a empresa mantenedora. Só o conteúdo das skills é que precisa ser genérico.
+- **Skills must be company-agnostic.** No data specific to Lybel (or any other company) hardcoded in the skill body, in `reference/`, or in the CLI source. No people names, advisors, investors, partners, specific page IDs, instance URLs, product lists, etc.
+- **Configurable defaults.** If a skill needs a value to function (cloud subdomain, root pageId, Atlassian instance), expose it via setup wizard, frontmatter, or environment variable. Document how to override.
+- **"Home page is the source of truth" pattern.** For data that changes (taxonomy, indexes, lists of entities), the skill must **query the external system at runtime** (Confluence, Jira, etc.), not cache it in the repo. This is what keeps the repo timeless and safe to publish.
+- **Acceptable exceptions:** README, CHANGELOG, and commit messages may freely mention Lybel — it's the maintaining company. Only the skill **content** has to stay generic.
 
-Antes de abrir PR, grep no diff: `git diff main | grep -iE 'lybel|d\.clair|11C47E|164232'`. Se aparecer fora de README/CHANGELOG/configs default documentados, refatora.
+Before opening a PR, grep your diff for company-specific leakage: `git diff main | grep -iE 'lybel|11C47E|164232'`. If anything shows up outside README / CHANGELOG / documented configurable defaults, refactor.
 
-### Adicionar skill nova
+### Adding a new skill
 
-1. Cria `<nome>/SKILL.md` seguindo o formato de [skills.md](https://docs.claude.com/en/docs/claude-code/skills).
-2. Põe templates/workflows em `<nome>/reference/`.
-3. Se precisa de CLI, cria `<nome>/cli/` com `main.go` + `Makefile`.
-4. Pra testar local sem reinstalar a cada mudança:
+1. Create `<name>/SKILL.md` following the [Claude Skills format](https://docs.claude.com/en/docs/claude-code/skills).
+2. Put workflows / canonical specs in `<name>/reference/`.
+3. If a CLI is needed, create `<name>/cli/` with `main.go` + `Makefile`.
+4. To test locally without reinstalling on every change:
    ```bash
-   ln -s "$(pwd)/<nome>" ~/.claude/skills/<nome>
+   ln -s "$(pwd)/<name>" ~/.claude/skills/<name>
    ```
-   (Windows: `mklink /J`. Alguns sandboxes de IA bloqueiam symlink em `~/.claude/skills/` — copie nesse caso.)
-5. PR + tag `vX.Y.Z` → CI publica release automaticamente.
+   (Windows: `mklink /J`. Some AI sandboxes block symlinks in `~/.claude/skills/` — copy in that case.)
+5. PR + tag `vX.Y.Z` → CI publishes the release automatically.
 
-### Convenções
+### Conventions
 
-- `name` no frontmatter: lowercase com hífens, máx 64 chars.
-- `description`: máx 1024 chars, com triggers (frases que ativam a skill).
-- Corpo do SKILL.md em **pt-BR**; frontmatter em inglês.
-- Referências usam paths relativos (`reference/foo.md`), nunca URL absoluto.
+- `name` field in frontmatter: lowercase with hyphens, max 64 chars.
+- `description`: max 1024 chars, including triggers (phrases that activate the skill).
+- Skill body in **English** (for Claude reasoning quality). The agent replies in whatever language the user wrote in.
+- References use relative paths (`reference/foo.md`), never absolute URLs.
 
 ---
 

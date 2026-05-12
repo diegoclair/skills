@@ -138,7 +138,10 @@ type PageCreateResult struct {
 }
 
 // ResolveCloud returns the effective cloud subdomain, checking (in order):
-// the explicit override, $ATLASSIAN_CLOUD, then defaulting to "lybel".
+// the explicit override, $ATLASSIAN_CLOUD, the `cloud=` line in the credentials
+// file. Returns "" if none is set — callers must surface a clear error to the
+// user (e.g. "run `confluence-docs setup` to configure your Confluence
+// subdomain"). The legacy default "lybel" is gone — this is a multi-tenant skill.
 func ResolveCloud(override string) string {
 	if override != "" {
 		return override
@@ -146,7 +149,41 @@ func ResolveCloud(override string) string {
 	if env := os.Getenv("ATLASSIAN_CLOUD"); env != "" {
 		return env
 	}
-	return "lybel"
+	return cloudFromCredsFile()
+}
+
+// cloudFromCredsFile reads the `cloud=` line from the credentials file.
+// Returns "" on any error (caller treats it as "not set").
+func cloudFromCredsFile() string {
+	path, err := configPath()
+	if err != nil {
+		return ""
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		legacy, lerr := legacyConfigPath()
+		if lerr != nil || legacy == path {
+			return ""
+		}
+		data, err = os.ReadFile(legacy)
+		if err != nil {
+			return ""
+		}
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		kv := strings.SplitN(line, "=", 2)
+		if len(kv) != 2 {
+			continue
+		}
+		if strings.TrimSpace(kv[0]) == "cloud" {
+			return strings.TrimSpace(kv[1])
+		}
+	}
+	return ""
 }
 
 // ResolveCreds reads credentials from the first source that provides both

@@ -69,6 +69,9 @@ func legacyConfigPath() (string, error) {
 // file and prints a warning to stderr suggesting migration.
 //
 // Returns (email, token, error). An os.IsNotExist error means no file found.
+// The cloud field is read separately via ReadCloudFromCreds — kept distinct
+// for backward compatibility with older credential files that only had
+// email/token.
 func ReadCredsFile(stderr io.Writer) (email, token string, err error) {
 	newPath, pathErr := ConfigPath()
 	if pathErr != nil {
@@ -121,9 +124,45 @@ func parseCredsData(data []byte) (email, token string, err error) {
 	return email, token, nil
 }
 
-// WriteCreds writes email and token to the config file with secure permissions.
-// Creates parent directories if needed.
-func WriteCreds(email, token string) error {
+// ReadCloudFromCreds returns the cloud subdomain stored in the credentials
+// file, or "" if not present. Errors reading the file return "".
+func ReadCloudFromCreds() string {
+	path, err := ConfigPath()
+	if err != nil {
+		return ""
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		// Try legacy path.
+		legacy, lerr := legacyConfigPath()
+		if lerr != nil || legacy == path {
+			return ""
+		}
+		data, err = os.ReadFile(legacy)
+		if err != nil {
+			return ""
+		}
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		kv := strings.SplitN(line, "=", 2)
+		if len(kv) != 2 {
+			continue
+		}
+		if strings.TrimSpace(kv[0]) == "cloud" {
+			return strings.TrimSpace(kv[1])
+		}
+	}
+	return ""
+}
+
+// WriteCreds writes email, token and cloud subdomain to the config file with
+// secure permissions. Creates parent directories if needed. If cloud is "",
+// the cloud line is omitted (preserves backward compat).
+func WriteCreds(email, token string, cloud ...string) error {
 	path, err := ConfigPath()
 	if err != nil {
 		return err
@@ -132,6 +171,9 @@ func WriteCreds(email, token string) error {
 		return fmt.Errorf("create config dir: %w", err)
 	}
 	content := fmt.Sprintf("email=%s\ntoken=%s\n", email, token)
+	if len(cloud) > 0 && cloud[0] != "" {
+		content += fmt.Sprintf("cloud=%s\n", cloud[0])
+	}
 	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
 		return fmt.Errorf("write credentials: %w", err)
 	}
@@ -215,11 +257,16 @@ func fetchCurrentUser(client httpClient, email, token, cloud string) userInfoRes
 }
 
 // resolveCloud returns the effective Confluence cloud subdomain.
+// Priority: $ATLASSIAN_CLOUD env var → cloud= line in credentials file → "".
+// Callers must handle the empty case (e.g. error with a clear message).
 func resolveCloud() string {
 	if env := os.Getenv("ATLASSIAN_CLOUD"); env != "" {
 		return env
 	}
-	return "lybel"
+	if fromCreds := ReadCloudFromCreds(); fromCreds != "" {
+		return fromCreds
+	}
+	return ""
 }
 
 // readLine reads a single trimmed line from r.
@@ -324,6 +371,14 @@ func runCheck(stdout, stderr io.Writer, client httpClient) (int, error) {
 	}
 
 	cloud := resolveCloud()
+	if cloud == "" {
+		fmt.Fprintln(stderr, "no Confluence subdomain configured")
+		fmt.Fprintln(stderr, "  fix: run `confluence-docs setup` and provide your subdomain")
+		fmt.Fprintln(stderr, "       (e.g. 'mycompany' for mycompany.atlassian.net),")
+		fmt.Fprintln(stderr, "       or export ATLASSIAN_CLOUD=mycompany,")
+		fmt.Fprintln(stderr, "       or add `cloud=mycompany` to the credentials file.")
+		return ExitNoCreds, nil
+	}
 	res := fetchCurrentUser(client, email, token, cloud)
 	if res.Err != nil {
 		fmt.Fprintf(stderr, "could not validate (network error): %v\n", res.Err)
@@ -349,6 +404,12 @@ func runCheck(stdout, stderr io.Writer, client httpClient) (int, error) {
 // runNonInteractive saves credentials provided via flags without prompting.
 func runNonInteractive(email, token string, stdout, stderr io.Writer, client httpClient) (int, error) {
 	cloud := resolveCloud()
+	if cloud == "" {
+		fmt.Fprintln(stderr, "error: no Confluence subdomain configured")
+		fmt.Fprintln(stderr, "  fix: export ATLASSIAN_CLOUD=mycompany before running setup,")
+		fmt.Fprintln(stderr, "       or run setup without flags for the interactive wizard.")
+		return ExitNoCreds, fmt.Errorf("no cloud")
+	}
 	fmt.Fprint(stderr, "Validating connection... ")
 	res := fetchCurrentUser(client, email, token, cloud)
 	if res.Err != nil {
@@ -364,7 +425,10 @@ func runNonInteractive(email, token string, stdout, stderr io.Writer, client htt
 		return ExitNetworkErr, nil
 	}
 
-	if err := WriteCreds(email, token); err != nil {
+	// Persist the cloud subdomain too so subsequent runs don't need the env
+	// var. If it came from env we still write it — explicit storage avoids
+	// surprise when the user later launches a shell without the env set.
+	if err := WriteCreds(email, token, cloud); err != nil {
 		fmt.Fprintln(stderr, "error saving credentials:", err)
 		return ExitNetworkErr, err
 	}
@@ -428,6 +492,27 @@ func runInteractive(prefillEmail, prefillToken string, stdin io.Reader, stdout, 
 		fmt.Fprintf(stdout, "API token: %s\n", maskToken(token))
 	}
 
+	// Ask for the Confluence cloud subdomain. The default is whatever
+	// resolveCloud() returns (env var or existing creds file value).
+	currentCloud := resolveCloud()
+	prompt := "Confluence subdomain (e.g. 'mycompany' for mycompany.atlassian.net)"
+	if currentCloud != "" {
+		prompt = fmt.Sprintf("Confluence subdomain (e.g. 'mycompany' — press Enter to keep '%s')", currentCloud)
+	}
+	fmt.Fprintf(stdout, "%s: ", prompt)
+	cloud, err := readLine(stdin)
+	if err != nil {
+		fmt.Fprintln(stderr, "setup cancelled")
+		return ExitNoCreds, nil
+	}
+	if cloud == "" {
+		cloud = currentCloud
+	}
+	if cloud == "" {
+		fmt.Fprintln(stderr, "setup cancelled — a Confluence subdomain is required")
+		return ExitNoCreds, nil
+	}
+
 	path, err := ConfigPath()
 	if err != nil {
 		fmt.Fprintln(stderr, "setup:", err)
@@ -435,7 +520,6 @@ func runInteractive(prefillEmail, prefillToken string, stdin io.Reader, stdout, 
 	}
 	fmt.Fprintf(stdout, "\nSaving credentials to: %s\n", path)
 
-	cloud := resolveCloud()
 	fmt.Fprint(stdout, "Validating connection... ")
 	res := fetchCurrentUser(client, email, token, cloud)
 	if res.Err != nil {
@@ -451,7 +535,7 @@ func runInteractive(prefillEmail, prefillToken string, stdin io.Reader, stdout, 
 		return ExitNetworkErr, nil
 	}
 
-	if err := WriteCreds(email, token); err != nil {
+	if err := WriteCreds(email, token, cloud); err != nil {
 		fmt.Fprintln(stdout, "\nerror saving credentials:", err)
 		return ExitNetworkErr, err
 	}

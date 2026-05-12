@@ -43,6 +43,8 @@ func okUserBody(displayName, accountID string) string {
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 // writeTempCreds writes a credentials file inside dir and returns its path.
+// Includes a default `cloud=testcloud` line so tests don't need to set the
+// ATLASSIAN_CLOUD env var; pass empty token to skip writing token.
 func writeTempCreds(t *testing.T, dir, email, token string) string {
 	t.Helper()
 	cfgDir := filepath.Join(dir, "confluence-docs")
@@ -50,7 +52,7 @@ func writeTempCreds(t *testing.T, dir, email, token string) string {
 		t.Fatal(err)
 	}
 	p := filepath.Join(cfgDir, "credentials")
-	content := fmt.Sprintf("email=%s\ntoken=%s\n", email, token)
+	content := fmt.Sprintf("email=%s\ntoken=%s\ncloud=testcloud\n", email, token)
 	if err := os.WriteFile(p, []byte(content), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -311,6 +313,7 @@ func TestConfigPath_OSSpecific(t *testing.T) {
 func TestNonInteractive_ValidCreds(t *testing.T) {
 	dir := t.TempDir()
 	overrideConfigDir(t, dir)
+	t.Setenv("ATLASSIAN_CLOUD", "testcloud")
 
 	mock := &mockHTTPClient{
 		statusCode: 200,
@@ -339,6 +342,7 @@ func TestNonInteractive_ValidCreds(t *testing.T) {
 func TestNonInteractive_InvalidToken(t *testing.T) {
 	dir := t.TempDir()
 	overrideConfigDir(t, dir)
+	t.Setenv("ATLASSIAN_CLOUD", "testcloud")
 
 	mock := &mockHTTPClient{statusCode: http.StatusUnauthorized}
 	_, errOut, code := runSetup(t, mock, "",

@@ -1,5 +1,29 @@
 # Changelog — confluence-docs
 
+## v0.9.2 (2026-05-12) — cloud subdomain in credentials file + README in English
+
+### Cloud subdomain is now configured, not hardcoded
+
+Removed the leftover `defaultCloud = "lybel"` from `adf/confluence.go` and `setup/setup.go`. The Confluence subdomain (e.g. `mycompany` for `mycompany.atlassian.net`) now resolves in this order:
+
+1. `--cloud` flag on the command (highest priority)
+2. `$ATLASSIAN_CLOUD` env var
+3. `cloud=` line in the credentials file (new)
+4. Empty → caller surfaces a clear error pointing at `confluence-docs setup`
+
+The interactive `confluence-docs setup` wizard now prompts for the subdomain alongside email + token and writes all three to the credentials file. The non-interactive flow (`--email X --token Y`) reads the subdomain from `$ATLASSIAN_CLOUD` (errors with a clear message if missing) and persists it to the credentials file so subsequent runs don't need the env var.
+
+`confluence-docs setup --check` now reports `no Confluence subdomain configured` explicitly when the subdomain is missing, with actionable fix instructions.
+
+### Documentation
+
+- Root [`README.md`](./README.md) translated from pt-BR to English; replaced Lybel-specific examples with generic placeholders. The "Contributing" section keeps the "skills must be company-agnostic" rule but updates the recommended grep pattern (`lybel|11C47E|164232`).
+- Setup wizard prompt strings now say `Confluence subdomain (e.g. 'mycompany' ...)` instead of assuming a default.
+
+### What this means for existing users
+
+Existing credentials files (which only have `email` + `token`) continue to work — the skill falls back to `$ATLASSIAN_CLOUD` if `cloud=` is missing. To migrate, run `confluence-docs setup` once and it'll write the subdomain into the file.
+
 ## v0.9.1 (2026-05-12) — strip remaining project-specific reference files
 
 Diego pointed out that the skill still shipped pt-BR / Lybel-specific reference files (`taxonomy.md` listing "the 6 categories of Lybel's KB", `aliases.md` mapping pt-BR keywords to Lybel categories, `templates.md` with Advisor/Investor/Varejista sheets in pt-BR, and a `workflows.md` heavily wired to Lybel's cloudId, space and parent IDs). Those don't help any other startup adopting the skill — each project has its own categories and aliases, which the agent already learns from the project's Confluence Home page (see `bootstrap.md`).

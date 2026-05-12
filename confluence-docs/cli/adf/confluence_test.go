@@ -86,8 +86,11 @@ func TestResolveCloud(t *testing.T) {
 	}
 
 	t.Setenv("ATLASSIAN_CLOUD", "")
-	if got := ResolveCloud(""); got != "lybel" {
-		t.Errorf("want default 'lybel', got %q", got)
+	// With no env, no override, and no creds file containing `cloud=` we now
+	// return "" — there is no hardcoded default. Callers must surface a clear
+	// error to the user (handled in setup / main / ResolveCreds path).
+	if got := ResolveCloud(""); got != "" {
+		t.Errorf("want empty (no env, no creds file), got %q", got)
 	}
 }
 
