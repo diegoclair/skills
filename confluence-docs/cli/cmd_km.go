@@ -496,7 +496,9 @@ func renderKMMD(pages map[string]kmPage) string {
 	wl := func(s string) { sb.WriteString(s); sb.WriteByte('\n') }
 
 	// Properties frontmatter.
-	wl(":::properties")
+	// `collapsed` wraps the details macro in an expand — the metadata table is
+	// big and noisy at the top of a 122-page index. Click to see.
+	wl(":::properties collapsed")
 	wl("tipo: reference")
 	wl("status: ativo")
 	wl("owner: @diegoclair")
@@ -689,7 +691,10 @@ func renderKMPageLine(p kmPage) string {
 // ── Upload ────────────────────────────────────────────────────────────────
 
 // uploadKM converts markdown to storage format (because the KM uses :::properties
-// and :::info / :::expand blocks) and uploads it to Confluence.
+// and :::info / :::expand blocks) and uploads it to Confluence. It also
+// extracts the `tags:` line from the :::properties block and applies them as
+// real Confluence labels on the page (so they appear as clickable chips above
+// the title, not only as table cell text).
 func uploadKM(client *adf.ConfluenceClient, pageID, md string, fullWidth bool, message string, stderr io.Writer) error {
 	// KM markdown always contains :::properties and :::info — storage path.
 	storageBody, err := adf.MarkdownToStorage([]byte(md))
@@ -702,6 +707,57 @@ func uploadKM(client *adf.ConfluenceClient, pageID, md string, fullWidth bool, m
 	if fullWidth {
 		if err := client.SetPageAppearance(pageID, adf.PageAppearanceFullWidth); err != nil {
 			fmt.Fprintf(stderr, "warning: page updated but full-width could not be set: %v\n", err)
+		}
+	}
+	// Apply tags from the :::properties block as real Confluence labels.
+	labels := extractTagsFromProperties(md)
+	if len(labels) > 0 {
+		if err := client.AddLabels(pageID, labels); err != nil {
+			fmt.Fprintf(stderr, "warning: page updated but labels could not be applied: %v\n", err)
+		}
+	}
+	return nil
+}
+
+// extractTagsFromProperties scans the markdown for a :::properties block and
+// returns the comma-separated tag list as individual normalized labels (lower-
+// case, kebab-case). Returns nil if no :::properties block or no tags line.
+func extractTagsFromProperties(md string) []string {
+	lines := strings.Split(md, "\n")
+	inBlock := false
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if !inBlock {
+			if strings.HasPrefix(trimmed, ":::") && strings.Contains(trimmed, "properties") {
+				inBlock = true
+			}
+			continue
+		}
+		if trimmed == ":::" {
+			break
+		}
+		// Look for "tags: a, b, c" (case-insensitive key).
+		if idx := strings.Index(trimmed, ":"); idx > 0 {
+			key := strings.ToLower(strings.TrimSpace(trimmed[:idx]))
+			if key == "tags" {
+				val := strings.TrimSpace(trimmed[idx+1:])
+				if val == "" {
+					return nil
+				}
+				parts := strings.Split(val, ",")
+				out := make([]string, 0, len(parts))
+				for _, p := range parts {
+					p = strings.TrimSpace(p)
+					// Confluence labels are alphanumeric + dash; replace spaces/underscores.
+					p = strings.ReplaceAll(p, " ", "-")
+					p = strings.ReplaceAll(p, "_", "-")
+					p = strings.ToLower(p)
+					if p != "" {
+						out = append(out, p)
+					}
+				}
+				return out
+			}
 		}
 	}
 	return nil

@@ -1,5 +1,31 @@
 # Changelog — confluence-docs
 
+## v0.8.3 (2026-05-12) — collapsed properties + labels API
+
+### New features
+
+#### `:::properties collapsed` — wrap metadata table in a collapsible Expand
+
+Pages that use `:::properties` for frontmatter (KNOWLEDGE_MAP, ICPs, etc) had the full 7-row metadata table dominating the top of the screen. Add the `collapsed` modifier to wrap the details macro in an Expand macro titled "Metadados" — click to see, hidden by default.
+
+```markdown
+:::properties collapsed
+tipo: reference
+status: ativo
+:::
+```
+
+Bare `:::properties` continues to render uncollapsed (unchanged behaviour).
+
+#### Labels API — `AddLabels`, `GetLabels`, `RemoveLabel` on `ConfluenceClient`
+
+Programmatic access to Confluence page labels:
+- `AddLabels(pageID, labels)` — POST `/wiki/rest/api/content/{id}/label` with `[{prefix:"global", name:"..."}]`. Duplicates ignored by API.
+- `GetLabels(pageID)` — GET `/wiki/api/v2/pages/{id}/labels?prefix=global`.
+- `RemoveLabel(pageID, label)` — DELETE single label.
+
+`confluence-docs km generate` now extracts the `tags:` line from the `:::properties` block in the rendered markdown and applies each comma-separated value as a real Confluence label on the target page. Tags become clickable chips above the page title (filterable across the space) instead of just text inside a table cell.
+
 ## v0.8.2 (2026-05-12) — fix Page Properties macro name
 
 ### Bug fix — Cloud storage macro name is `details`, not `page-properties`

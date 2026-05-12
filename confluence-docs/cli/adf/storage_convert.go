@@ -71,7 +71,22 @@ func renderInlineMD(body string) (string, error) {
 func macroBlockToStorage(name, title, body string) (string, error) {
 	switch name {
 	case "properties":
-		return PropertiesBlockToStorageXML(body), nil
+		xml := PropertiesBlockToStorageXML(body)
+		if xml == "" {
+			return "", nil
+		}
+		// If the opening line had a "collapsed" modifier (`:::properties collapsed`),
+		// wrap the details macro in an expand so it renders collapsed by default.
+		if strings.EqualFold(strings.TrimSpace(title), "collapsed") {
+			var sb strings.Builder
+			sb.WriteString(`<ac:structured-macro ac:name="expand" ac:schema-version="1">`)
+			sb.WriteString(`<ac:parameter ac:name="title">Metadados</ac:parameter>`)
+			sb.WriteString(`<ac:rich-text-body>`)
+			sb.WriteString(xml)
+			sb.WriteString(`</ac:rich-text-body></ac:structured-macro>`)
+			return sb.String(), nil
+		}
+		return xml, nil
 
 	case "info", "note", "warning", "success", "error", "tip":
 		// Confluence supports info/note/warning/tip directly; success/error

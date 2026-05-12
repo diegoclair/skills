@@ -938,3 +938,62 @@ func min(a, b int) int {
 	}
 	return b
 }
+
+// AddLabels attaches one or more "global" labels to a page. Existing labels
+// are preserved; duplicates are ignored by the Confluence API.
+//
+// Uses the v1 endpoint POST /wiki/rest/api/content/{id}/label — v2 exposes
+// only a read endpoint for labels (mai/2026).
+func (c *ConfluenceClient) AddLabels(pageID string, labels []string) error {
+	if len(labels) == 0 {
+		return nil
+	}
+	type labelPayload struct {
+		Prefix string `json:"prefix"`
+		Name   string `json:"name"`
+	}
+	body := make([]labelPayload, 0, len(labels))
+	for _, l := range labels {
+		l = strings.TrimSpace(l)
+		if l == "" {
+			continue
+		}
+		body = append(body, labelPayload{Prefix: "global", Name: l})
+	}
+	payload, err := json.Marshal(body)
+	if err != nil {
+		return fmt.Errorf("marshal labels: %w", err)
+	}
+	path := fmt.Sprintf("/rest/api/content/%s/label", pageID)
+	_, _, err = c.doRequest("POST", path, bytes.NewReader(payload))
+	return err
+}
+
+// GetLabels returns the current "global" labels attached to a page.
+func (c *ConfluenceClient) GetLabels(pageID string) ([]string, error) {
+	path := fmt.Sprintf("/api/v2/pages/%s/labels?prefix=global&limit=250", pageID)
+	data, _, err := c.doRequest("GET", path, nil)
+	if err != nil {
+		return nil, err
+	}
+	var resp struct {
+		Results []struct {
+			Name string `json:"name"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, fmt.Errorf("decode labels: %w", err)
+	}
+	out := make([]string, 0, len(resp.Results))
+	for _, r := range resp.Results {
+		out = append(out, r.Name)
+	}
+	return out, nil
+}
+
+// RemoveLabel detaches a single label from a page.
+func (c *ConfluenceClient) RemoveLabel(pageID, label string) error {
+	path := fmt.Sprintf("/rest/api/content/%s/label/%s", pageID, url.PathEscape(label))
+	_, _, err := c.doRequest("DELETE", path, nil)
+	return err
+}
