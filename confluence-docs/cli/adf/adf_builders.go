@@ -164,7 +164,10 @@ type PagePropertiesEntry struct {
 // The returned string is suitable for use as a storage body fragment.
 func PagePropertiesToStorage(entries []PagePropertiesEntry) string {
 	var sb strings.Builder
-	sb.WriteString(`<ac:structured-macro ac:name="page-properties" ac:schema-version="1">`)
+	// Confluence Cloud's Page Properties macro is stored with ac:name="details"
+	// — "page-properties" is the legacy Server name and renders as "Unknown
+	// macro" in Cloud. The corresponding aggregator macro is "detailssummary".
+	sb.WriteString(`<ac:structured-macro ac:name="details" ac:schema-version="1">`)
 	sb.WriteString(`<ac:rich-text-body><table><tbody>`)
 	for _, e := range entries {
 		sb.WriteString("<tr><th>")

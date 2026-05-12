@@ -71,7 +71,7 @@ func TestPropertiesBlockToStorageXML(t *testing.T) {
 status: ativo
 relacionados: [[Página Principal]]`
 	out := PropertiesBlockToStorageXML(body)
-	if !strings.Contains(out, `ac:name="page-properties"`) {
+	if !strings.Contains(out, `ac:name="details"`) {
 		t.Fatalf("missing macro: %s", out)
 	}
 	if !strings.Contains(out, "<th>tipo</th>") {

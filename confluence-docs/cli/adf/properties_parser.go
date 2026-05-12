@@ -12,7 +12,9 @@
 //
 // Each line is "key: value". Blank lines and lines without ':' are ignored.
 // Values may contain [[link]] syntax (parsed by PagePropertiesToStorage).
-// The block is converted to the Confluence page-properties storage macro.
+// The block is converted to the Confluence "details" storage macro (which
+// is the Cloud storage name for the Page Properties macro — "page-properties"
+// is the legacy Server name and renders as "Unknown macro" in Cloud).
 package adf
 
 import (
@@ -51,7 +53,8 @@ func ParsePropertiesBlock(body string) []PagePropertiesEntry {
 }
 
 // PropertiesBlockToStorageXML is a convenience wrapper that parses the block
-// body and returns the Confluence storage XML for the page-properties macro.
+// body and returns the Confluence storage XML for the details (Page
+// Properties) macro.
 func PropertiesBlockToStorageXML(body string) string {
 	entries := ParsePropertiesBlock(body)
 	if len(entries) == 0 {

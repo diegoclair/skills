@@ -117,7 +117,7 @@ func TestPagePropertiesToStorage_basic(t *testing.T) {
 		{Key: "status", Value: "ativo"},
 	}
 	out := PagePropertiesToStorage(entries)
-	if !strings.Contains(out, `ac:name="page-properties"`) {
+	if !strings.Contains(out, `ac:name="details"`) {
 		t.Fatalf("missing macro name: %s", out)
 	}
 	if !strings.Contains(out, "<th>tipo</th>") {

@@ -39,7 +39,7 @@ func TestMarkdownToStorage_basic(t *testing.T) {
 		t.Fatalf("MarkdownToStorage error: %v", err)
 	}
 	// Must contain the page-properties macro.
-	if !strings.Contains(out, `ac:name="page-properties"`) {
+	if !strings.Contains(out, `ac:name="details"`) {
 		t.Errorf("missing page-properties macro in output:\n%s", out)
 	}
 	// Must contain the heading.
@@ -76,7 +76,7 @@ func TestMarkdownToStorage_multipleProperties(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MarkdownToStorage error: %v", err)
 	}
-	count := strings.Count(out, `ac:name="page-properties"`)
+	count := strings.Count(out, `ac:name="details"`)
 	if count != 2 {
 		t.Errorf("expected 2 page-properties macros, got %d:\n%s", count, out)
 	}
@@ -89,7 +89,7 @@ func TestMarkdownToStorage_emptyPropertiesBlockSkipped(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MarkdownToStorage error: %v", err)
 	}
-	if strings.Contains(out, `ac:name="page-properties"`) {
+	if strings.Contains(out, `ac:name="details"`) {
 		t.Errorf("empty properties block should be omitted:\n%s", out)
 	}
 	if !strings.Contains(out, "<h2>") {
