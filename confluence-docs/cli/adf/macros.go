@@ -38,11 +38,17 @@ type macro struct {
 //   - an error if a `:::` block is unterminated.
 func preprocess(src string) (string, []macro, error) {
 	lines := strings.Split(src, "\n")
-	var out strings.Builder
 	var macros []macro
 
+	// Phase 0: lift smart link lines (![embed](...), standalone [text](url),
+	// bare URL lines) into placeholders BEFORE any other preprocessing.
+	// This ensures they don't get picked up by goldmark as images/links.
+	lines, macros = preprocessSmartLinks(lines, macros)
+
+	var out strings.Builder
+
 	tocRe := regexp.MustCompile(`^\s*\[TOC(?:\s+([^\]]*))?\]\s*$`)
-	openRe := regexp.MustCompile(`^:::\s*([a-zA-Z]+)(?:\s+(.*))?$`)
+	openRe := regexp.MustCompile(`^:::\s*([a-zA-Z_-]+)(?:\s+(.*))?$`)
 	closeRe := regexp.MustCompile(`^:::\s*$`)
 
 	for i := 0; i < len(lines); i++ {
@@ -83,6 +89,35 @@ func preprocess(src string) (string, []macro, error) {
 
 			inner := strings.Join(body, "\n")
 			idx := len(macros)
+
+			// :::properties block → page-properties macro (storage XML).
+			// It produces a "rawStorage" pseudo-node that the converter wraps
+			// in a codeBlock with language "confluence-storage" so the storage
+			// XML passes through the ADF pipeline without being parsed as ADF.
+			// Callers using page create/upload with --markdown will need to be
+			// aware that the resulting ADF wraps raw XML — this is the safest
+			// round-trip for storage macros.
+			if kind == "properties" {
+				capturedInner := inner
+				macros = append(macros, macro{
+					kind: "properties",
+					render: func() Node {
+						xml := PropertiesBlockToStorageXML(capturedInner)
+						if xml == "" {
+							return Paragraph(Text("(empty properties block)"))
+						}
+						// Use a code block with a special language tag to signal
+						// that this is raw storage XML. The CLI's page create/upload
+						// path can later detect and handle this, or callers can use
+						// the storage representation directly.
+						return CodeBlock("confluence-storage", xml)
+					},
+				})
+				out.WriteString(placeholder(idx))
+				out.WriteString("\n")
+				continue
+			}
+
 			macros = append(macros, macro{
 				kind: kind,
 				render: func() Node {

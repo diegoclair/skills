@@ -393,12 +393,15 @@ Ordered by preference. Always try the cheapest tool that can answer the question
 | Update a single table cell | `page apply --table-update-cell --match-cell ROW --col-name COL --value V` | replace whole table section | — |
 | Replace whole page body (full-body rewrite) | `page upload --markdown FILE` | `page upload --adf FILE` | delete+recreate (loses pageId) |
 | Create a new page | `page create --markdown` | `adf` to convert + MCP `createConfluencePage(adf)` | MCP `createConfluencePage(markdown)` |
+| Create a new page (full-width) | `page create --markdown FILE --full-width` | — | — |
 | Rename a page | `page move --page-id ID --title "New Title"` | `page get` + `page upload --title "..."` | MCP `updateConfluencePage` |
 | Move a page to a new parent | `page move --page-id ID --parent-id NEW_PARENT` | — | MCP `updateConfluencePage` |
 | Reorder siblings | `page reorder --page-id ID --before/--after SIBLING_ID` | — | manual drag in UI |
 | Append as last child of a parent | `page reorder --page-id ID --append-to PARENT_ID` | `page move --parent-id` (lands at first position) | manual drag in UI |
 | Soft-delete a page | `page delete --page-id ID --yes` | — | MCP `deleteConfluencePage` |
-| Build rich ADF from markdown | `adf` (with `[TOC]`, `:::expand`, `:::warning` extensions) | — | — |
+| Build rich ADF from markdown | `adf` (with `[TOC]`, `:::expand`, `:::warning`, `:::properties`, smart-link extensions) | — | — |
+| Check for duplicate before create | `check --title "..." --type reference` | manual `search "..."` | — |
+| Generate a template for a new page | `new reference --title "..." --output /tmp/page.md` | — | — |
 
 **Why CLI first:** the MCP returns the full ADF body of every page (10–40 KB). The CLI returns digests (~500 bytes), single-section slices (~hundreds of bytes), TSV rows (~150 bytes per result), or one-line status payloads. Across a multi-edit session the difference is usually 10–50× in token cost.
 
@@ -409,9 +412,153 @@ Ordered by preference. Always try the cheapest tool that can answer the question
 - **Batch:** multiple reads in parallel within the same tool-call block.
 - **Macro preservation**: `page apply` and `edit` only touch the targeted section; every macro elsewhere on the page is preserved byte-for-byte. Never use `contentFormat: "markdown"` on a page with macros.
 
-## Report style
+## Doc types — taxonomy for the Lybel knowledge base
 
-- Reply in **Brazilian Portuguese (pt-BR)**.
+Every Confluence page in the Lybel space belongs to one of five standard doc types. These types drive both the `check` filter and the `new` template generator.
+
+| Type | Purpose | When to create |
+|---|---|---|
+| `reference` | Static facts about something external (PSP, competitor, partner, technology, API). The canonical "what is X" answer. | New integration, new competitor, new tool being evaluated. |
+| `decision` | A choice made and why — Architecture / Product Decision Record (ADR). Immutable once published (supersede rather than edit). | After any significant architectural, product, or partnership decision. |
+| `explanation` | Conceptual "why" — not how to do something, but what it is and why it exists. | Onboarding gaps, recurring questions, concepts used across multiple pages. |
+| `how-to` | Step-by-step operational guide. Action-oriented; assumes the reader knows the concept. | Any repeatable operational task (deploy, configure, run a meeting, etc.). |
+| `capture` | Quick capture: spike result, meeting note, idea, research dump. Low-polish, high-freshness. | After a spike, meeting, or discovery that needs to be logged before it disappears. |
+
+## Mandatory workflow: check before create
+
+**ALWAYS run `confluence-docs check` before creating a new page or running `new`.** This catches exact duplicates and near-duplicates before they clutter the space.
+
+```
+# 1. Check first
+confluence-docs check --title "Análise Stripe Brasil" --type reference
+
+# Output example:
+# { "exists": false, "similar": [...], "suggestion": "create" }
+
+# 2. If suggestion == "update_existing" → update the existing page instead.
+# If suggestion == "create" → proceed to generate the template.
+
+# 3. Generate template
+confluence-docs new reference \
+  --title "Análise Stripe Brasil" \
+  --output /tmp/lybel-edit/page.md
+
+# 4. Edit the template (fill in the blanks), then create:
+confluence-docs page create \
+  --space-id 131352 --parent-id PARENT_ID \
+  --title "Análise Stripe Brasil" \
+  --markdown /tmp/lybel-edit/page.md
+```
+
+The `check` command uses trigram-based fuzzy matching (Jaccard similarity, threshold 0.7 by default). It also accepts `--tags` to filter by Confluence labels and `--threshold` to tighten or loosen the match.
+
+## New features (v0.4+)
+
+### Full-width pages
+
+`page create` and `page upload` now accept `--full-width` (and `--fixed-width` to revert):
+
+```bash
+# Create a full-width page
+confluence-docs page create \
+  --space-id 131352 --parent-id 164232 \
+  --title "Dashboard Financeiro" \
+  --markdown content.md \
+  --full-width
+
+# Revert an existing page to fixed-width
+confluence-docs page upload --page-id 12345 --markdown content.md --fixed-width
+```
+
+Under the hood this posts two properties (`content-appearance-draft` and `content-appearance-published`) to the page properties API after the create/update.
+
+### Page Properties macro (:::properties block)
+
+In any markdown file, use the `:::properties` fenced block to generate the Confluence Page Properties macro:
+
+```markdown
+:::properties
+tipo: reference
+status: ativo
+owner: d.clair@novapaytech.com
+tags: psp, cobranca, recorrencia
+relacionados: [[Análise Stripe Brasil]], [[id:12345]]
+criado: 2026-05-12
+atualizado: 2026-05-12
+:::
+```
+
+Links in values use `[[Page Title]]` or `[[id:N]]` syntax, which the converter turns into `<ac:link><ri:page ri:content-title="..."/></ac:link>` storage XML.
+
+The block is rendered as a `codeBlock` with language `confluence-storage` in ADF (so the storage XML passes through the pipeline). When creating pages via `page create --markdown`, Confluence accepts the storage XML inside the ADF body.
+
+### Smart Link embeds
+
+In markdown, certain standalone URL patterns are automatically converted to Confluence Smart Link nodes:
+
+| Markdown | ADF node | Renders as |
+|---|---|---|
+| `![embed](https://youtube.com/...)` | `embedCard` (wide layout) | Embedded player/preview |
+| `https://linear.app/...` on its own line | `blockCard` | Preview card |
+| `https://github.com/...` on its own line | `blockCard` | Preview card |
+| `[text](url)` in the middle of a paragraph | normal link | Inline hyperlink |
+
+Bare URL lines and `![embed](url)` trigger smart link conversion. Named links like `[Click here](url)` in prose always remain regular links.
+
+### `confluence-docs check` — duplicate detection
+
+```bash
+confluence-docs check --title "Análise Stripe Brasil"
+confluence-docs check --title "Análise Stripe Brasil" --type reference --tags psp,concorrente
+confluence-docs check --title "..." --threshold 0.8   # stricter matching
+confluence-docs check --title "..." --text            # plain-text output
+```
+
+JSON output:
+```json
+{
+  "exists": false,
+  "similar": [
+    {"id": "456", "title": "Análise Stripe (PT)", "url": "https://...", "similarity_score": 0.78}
+  ],
+  "suggestion": "create"
+}
+```
+
+- `suggestion: "update_existing"` — a near-duplicate was found; consider updating it instead.
+- `suggestion: "create"` — no close match; safe to create.
+
+### `confluence-docs new <type>` — template generator
+
+Generates a markdown template with a `:::properties` block and type-specific headings. Output goes to stdout or `--output FILE`.
+
+```bash
+# Reference doc
+confluence-docs new reference \
+  --title "AbacatePay — PSP reference" \
+  --output /tmp/lybel-edit/page.md
+
+# Decision record (supersedes another page)
+confluence-docs new decision \
+  --title "PSP Onda 1: AbacatePay" \
+  --supersedes 98765
+
+# How-to guide
+confluence-docs new how-to --title "Como fazer deploy no Railway"
+
+# Quick capture
+confluence-docs new capture --title "Spike AbacatePay webhooks 2026-05-12"
+```
+
+Owner is read from `git config user.email`. Template includes `status: rascunho`, today's date for `criado`/`atualizado`, and structured headings appropriate to the doc type.
+
+For `decision` type, the template also includes: Alternatives Considered (table), Consequences, and Review date.
+
+### Backward compatibility
+
+- Storage XML (`:::warning`, `:::expand`, `[TOC]`) continues to work exactly as before.
+- ADF output via `adf` command is unchanged — smart links and properties are new addition.
+- `--full-width` and `--fixed-width` are additive flags; omitting them preserves the default Confluence behavior (fixed-width).
 - Full URLs always: `https://lybel.atlassian.net/wiki/spaces/lybel/pages/<id>`.
 - Concise — the team includes non-technical people.
 - **Confirm exact title and location** (parent + category) before creating any page.

@@ -399,6 +399,96 @@ func (c *ConfluenceClient) UpdatePage(pageID, title string, versionNumber int, a
 	return nil
 }
 
+// CreatePageStorage creates a new page with a body in Confluence storage
+// (XHTML + macro XML) format instead of ADF. Use this when the markdown source
+// contains macros that have no pure-ADF equivalent (e.g. page-properties).
+func (c *ConfluenceClient) CreatePageStorage(spaceID, parentID, title string, storageBody string) (*PageCreateResult, error) {
+	payload := map[string]any{
+		"spaceId":  spaceID,
+		"parentId": parentID,
+		"status":   "current",
+		"title":    title,
+		"body": map[string]any{
+			"representation": "storage",
+			"value":          storageBody,
+		},
+	}
+
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("marshal create payload: %w", err)
+	}
+
+	data, _, err := c.doRequest("POST", "/api/v2/pages", bytes.NewReader(payloadBytes))
+	if err != nil {
+		return nil, fmt.Errorf("create page (storage): %w", err)
+	}
+
+	var result PageCreateResult
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, fmt.Errorf("parse create response: %w", err)
+	}
+	return &result, nil
+}
+
+// UpdatePageStorage updates an existing page body in Confluence storage
+// (XHTML + macro XML) format instead of ADF. Use this when the markdown source
+// contains macros that have no pure-ADF equivalent (e.g. page-properties).
+// title and versionNumber are fetched automatically if not provided (0/"").
+func (c *ConfluenceClient) UpdatePageStorage(pageID, title string, versionNumber int, storageBody string, versionMessage string, dryRun bool, dryRunOut io.Writer) error {
+	// Auto-fetch title and version if not provided.
+	if title == "" || versionNumber == 0 {
+		meta, err := c.GetPage(pageID, "storage")
+		if err != nil {
+			return fmt.Errorf("auto-fetch page metadata: %w", err)
+		}
+		if title == "" {
+			title = meta.Title
+		}
+		if versionNumber == 0 {
+			versionNumber = meta.Version.Number + 1
+		}
+	}
+
+	if dryRun {
+		fmt.Fprintf(dryRunOut, "[dry-run] Would update page ID %s (storage format):\n", pageID)
+		fmt.Fprintf(dryRunOut, "  Title:   %s\n", title)
+		fmt.Fprintf(dryRunOut, "  Version: %d\n", versionNumber)
+		if versionMessage != "" {
+			fmt.Fprintf(dryRunOut, "  Message: %s\n", versionMessage)
+		}
+		fmt.Fprintf(dryRunOut, "  Body size: %d bytes\n", len(storageBody))
+		fmt.Fprintf(dryRunOut, "[dry-run] No changes made.\n")
+		return nil
+	}
+
+	payload := map[string]any{
+		"id":     pageID,
+		"status": "current",
+		"title":  title,
+		"version": map[string]any{
+			"number":  versionNumber,
+			"message": versionMessage,
+		},
+		"body": map[string]any{
+			"representation": "storage",
+			"value":          storageBody,
+		},
+	}
+
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal update payload: %w", err)
+	}
+
+	path := fmt.Sprintf("/api/v2/pages/%s", pageID)
+	_, _, err = c.doRequest("PUT", path, bytes.NewReader(payloadBytes))
+	if err != nil {
+		return fmt.Errorf("update page %s (storage): %w", pageID, err)
+	}
+	return nil
+}
+
 // MovePage moves a page to a new parent and/or renames it. The body is
 // preserved (refetched and re-PUT) since the v2 PUT requires it.
 // If newParentID is "", parent is unchanged. If newTitle is "", title is
@@ -658,6 +748,108 @@ func stripExcerptHTML(s string) string {
 // BaseURL returns the base URL of this client.
 func (c *ConfluenceClient) BaseURL() string {
 	return c.baseURL
+}
+
+// ---------- Page Properties (appearance) ----------
+
+// PageAppearance represents the content appearance of a page.
+type PageAppearance string
+
+const (
+	// PageAppearanceFullWidth sets the page to full-width layout.
+	PageAppearanceFullWidth PageAppearance = "full-width"
+	// PageAppearanceFixedWidth sets the page to fixed-width layout (default).
+	PageAppearanceFixedWidth PageAppearance = "fixed-width"
+)
+
+// SetPageAppearance posts the content-appearance-draft and
+// content-appearance-published page properties to apply a full-width or
+// fixed-width layout to the page.
+//
+// This requires two POST calls to /wiki/api/v2/pages/{pageId}/properties —
+// one for the draft state and one for the published state.
+//
+// IMPORTANT: Confluence page properties use a "create or update" pattern.
+// The v2 API does not support PATCH; if the property already exists, a
+// subsequent POST returns 409. To handle this we try POST first and fall back
+// to PUT if we get a conflict.
+func (c *ConfluenceClient) SetPageAppearance(pageID string, appearance PageAppearance) error {
+	keys := []string{
+		"content-appearance-draft",
+		"content-appearance-published",
+	}
+	for _, key := range keys {
+		if err := c.upsertPageProperty(pageID, key, string(appearance)); err != nil {
+			return fmt.Errorf("set page appearance (%s): %w", key, err)
+		}
+	}
+	return nil
+}
+
+// upsertPageProperty creates or updates a single page property by key.
+// It tries POST first; on 409 it lists existing properties to find the
+// property version and retries with PUT.
+func (c *ConfluenceClient) upsertPageProperty(pageID, key, value string) error {
+	payload := map[string]any{
+		"key":   key,
+		"value": value,
+	}
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal property: %w", err)
+	}
+
+	path := fmt.Sprintf("/api/v2/pages/%s/properties", pageID)
+	_, statusCode, postErr := c.doRequest("POST", path, bytes.NewReader(payloadBytes))
+	if postErr == nil {
+		return nil
+	}
+
+	// 409 = property already exists; fetch it to get its ID and version, then PUT.
+	if statusCode == 409 {
+		propID, version, getErr := c.getPagePropertyIDAndVersion(pageID, key)
+		if getErr != nil {
+			return fmt.Errorf("get existing property %q: %w", key, getErr)
+		}
+		updatePayload := map[string]any{
+			"key":   key,
+			"value": value,
+			"version": map[string]any{
+				"number": version + 1,
+			},
+		}
+		updateBytes, _ := json.Marshal(updatePayload)
+		putPath := fmt.Sprintf("/api/v2/pages/%s/properties/%s", pageID, propID)
+		_, _, putErr := c.doRequest("PUT", putPath, bytes.NewReader(updateBytes))
+		return putErr
+	}
+
+	return postErr
+}
+
+// getPagePropertyIDAndVersion fetches a page property by key and returns
+// its ID and current version number.
+func (c *ConfluenceClient) getPagePropertyIDAndVersion(pageID, key string) (id string, version int, err error) {
+	path := fmt.Sprintf("/api/v2/pages/%s/properties?key=%s", pageID, url.QueryEscape(key))
+	data, _, reqErr := c.doRequest("GET", path, nil)
+	if reqErr != nil {
+		return "", 0, reqErr
+	}
+	var resp struct {
+		Results []struct {
+			ID      string `json:"id"`
+			Version struct {
+				Number int `json:"number"`
+			} `json:"version"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return "", 0, fmt.Errorf("parse properties response: %w", err)
+	}
+	for _, r := range resp.Results {
+		return r.ID, r.Version.Number, nil
+	}
+	return "", 0, fmt.Errorf("property %q not found for page %s", key, pageID)
 }
 
 // ExtractBodyFromMCPResponse unwraps the body from an MCP getConfluencePage

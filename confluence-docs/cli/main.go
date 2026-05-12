@@ -23,7 +23,8 @@ import (
 )
 
 // version is injected at build time via -ldflags "-X main.version=..."
-var version = "dev"
+// Falls back to v0.8.0 when not set via ldflags (dev builds).
+var version = "v0.8.0"
 
 const helpText = `confluence-docs — Confluence ADF toolkit: convert, edit, lint, and publish pages.
 
@@ -38,6 +39,8 @@ USAGE:
   confluence-docs lint         FILE.json
   confluence-docs extract-body [< mcp-response.json]
   confluence-docs index        VERB [flags]
+  confluence-docs check        --title "..." [--type TYPE] [--tags t1,t2] [--threshold 0.7]
+  confluence-docs new          TYPE --title "..." [--parent-id ID] [--full-width] [--output FILE]
   confluence-docs --version
   confluence-docs --help
 
@@ -52,6 +55,8 @@ COMMANDS:
   lint          Validate ADF structure and report errors/warnings.
   extract-body  Unwrap body from an MCP getConfluencePage response.
   index         Manage the Page ID Index table on the Home page.
+  check         Fuzzy title search before creating a page. Returns JSON with exists/similar/suggestion.
+  new           Generate a markdown template for a new page by doc type (reference/decision/explanation/how-to/capture).
 
 SETUP FLAGS:
   (no flags)              Interactive wizard — prompts for email and API token.
@@ -102,6 +107,7 @@ PAGE VERBS:
                'page apply --replace-section' etc.
   page create  --space-id ID --parent-id ID --title TITLE
                [--markdown FILE | --adf FILE] [--cloud SUBDOMAIN]
+               [--full-width | --fixed-width]
                [--email EMAIL] [--token TOKEN]
   page digest  --page-id ID [--json]
                Print a slim summary of the page (title, version, headings,
@@ -181,6 +187,15 @@ MARKDOWN EXTENSIONS (adf & edit fragments):
   [TOC maxLevel=3 minLevel=1]        With explicit min/max levels.
   :::expand Title                    Expand block; close with :::
   :::warning Title                   Panel of type warning/info/note/success/error.
+  :::properties                      Page Properties macro (key: value pairs); close with :::
+    tipo: reference
+    status: ativo
+    relacionados: [[Page Title]], [[id:12345]]
+    criado: 2026-05-01
+  :::
+  ![embed](URL)                      EmbedCard (YouTube, Figma, etc.) — standalone line.
+  [text](URL)                        BlockCard when on a line by itself (smart link).
+  https://...                        BlockCard when bare URL on its own line.
 
 SEARCH:
   search "term" [--limit N] [--space KEY] [--json]
@@ -302,6 +317,10 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) (int, error) 
 		return runExtractBody(args[1:], stdin, stdout, stderr)
 	case "index":
 		return runIndex(args[1:], stdin, stdout, stderr)
+	case "check":
+		return runCheck(args[1:], stdout, stderr)
+	case "new":
+		return runNew(args[1:], stdin, stdout, stderr)
 	}
 
 	fmt.Fprintln(stderr, "unknown command:", args[0])
@@ -998,7 +1017,7 @@ func runPageGet(args []string, stdout, stderr io.Writer) (int, error) {
 
 func runPageUpload(args []string, stdout, stderr io.Writer) (int, error) {
 	var pageID, adfFile, markdownFile, title, message string
-	var dryRun bool
+	var dryRun, fullWidth, fixedWidth bool
 
 	remaining, cloud, email, token, err := parseCommonPageFlags(args)
 	if err != nil {
@@ -1046,6 +1065,10 @@ func runPageUpload(args []string, stdout, stderr io.Writer) (int, error) {
 			i++
 		case "--dry-run":
 			dryRun = true
+		case "--full-width":
+			fullWidth = true
+		case "--fixed-width":
+			fixedWidth = true
 		case "-h", "--help":
 			fmt.Fprintln(stdout, "page upload — replace the entire body of an existing page.")
 			fmt.Fprintln(stdout, "")
@@ -1079,7 +1102,12 @@ func runPageUpload(args []string, stdout, stderr io.Writer) (int, error) {
 		return exitInputErr, errInvalidUsage
 	}
 
-	var doc adf.Node
+	client, ok := buildClient(cloud, email, token, stderr)
+	if !ok {
+		return exitUnknownErr, nil
+	}
+
+	var updateErr error
 	if adfFile != "" {
 		adfBytes, rdErr := os.ReadFile(adfFile)
 		if rdErr != nil {
@@ -1091,32 +1119,47 @@ func runPageUpload(args []string, stdout, stderr io.Writer) (int, error) {
 			fmt.Fprintln(stderr, "invalid ADF:", pErr)
 			return exitParseErr, pErr
 		}
-		doc = parsed
+		updateErr = client.UpdatePage(pageID, title, 0, parsed, message, dryRun, stderr)
 	} else {
 		mdBytes, rdErr := os.ReadFile(markdownFile)
 		if rdErr != nil {
 			fmt.Fprintln(stderr, "reading markdown:", rdErr)
 			return exitInputErr, rdErr
 		}
-		converted, cErr := adf.Convert(mdBytes)
-		if cErr != nil {
-			fmt.Fprintln(stderr, "parse markdown:", cErr)
-			return exitParseErr, cErr
+		if adf.RequiresStorageFormat(string(mdBytes)) {
+			// Markdown contains :::properties or other storage-only macros.
+			storageBody, sErr := adf.MarkdownToStorage(mdBytes)
+			if sErr != nil {
+				fmt.Fprintln(stderr, "convert markdown to storage:", sErr)
+				return exitParseErr, sErr
+			}
+			updateErr = client.UpdatePageStorage(pageID, title, 0, storageBody, message, dryRun, stderr)
+		} else {
+			converted, cErr := adf.Convert(mdBytes)
+			if cErr != nil {
+				fmt.Fprintln(stderr, "parse markdown:", cErr)
+				return exitParseErr, cErr
+			}
+			updateErr = client.UpdatePage(pageID, title, 0, converted, message, dryRun, stderr)
 		}
-		doc = converted
 	}
 
-	client, ok := buildClient(cloud, email, token, stderr)
-	if !ok {
-		return exitUnknownErr, nil
-	}
-
-	if err := client.UpdatePage(pageID, title, 0, doc, message, dryRun, stderr); err != nil {
-		fmt.Fprintln(stderr, "error:", err)
-		return exitUnknownErr, err
+	if updateErr != nil {
+		fmt.Fprintln(stderr, "error:", updateErr)
+		return exitUnknownErr, updateErr
 	}
 
 	if !dryRun {
+		// Apply page appearance (full-width / fixed-width) if requested.
+		if fullWidth || fixedWidth {
+			appearance := adf.PageAppearanceFullWidth
+			if fixedWidth {
+				appearance = adf.PageAppearanceFixedWidth
+			}
+			if appErr := client.SetPageAppearance(pageID, appearance); appErr != nil {
+				fmt.Fprintf(stderr, "warning: page updated but appearance could not be set: %v\n", appErr)
+			}
+		}
 		// Auto-refresh the home cache if this write touched the Home page.
 		refreshHomeCacheAfterWrite(pageID, client, stderr)
 		fmt.Fprintf(stdout, `{"status":"ok","pageId":%q}`+"\n", pageID)
@@ -1126,6 +1169,7 @@ func runPageUpload(args []string, stdout, stderr io.Writer) (int, error) {
 
 func runPageCreate(args []string, stdout, stderr io.Writer) (int, error) {
 	var spaceID, parentID, title, markdownFile, adfFile string
+	var fullWidth, fixedWidth bool
 
 	remaining, cloud, email, token, err := parseCommonPageFlags(args)
 	if err != nil {
@@ -1171,6 +1215,10 @@ func runPageCreate(args []string, stdout, stderr io.Writer) (int, error) {
 			}
 			adfFile = remaining[i+1]
 			i++
+		case "--full-width":
+			fullWidth = true
+		case "--fixed-width":
+			fixedWidth = true
 		default:
 			fmt.Fprintln(stderr, "unknown flag:", a)
 			return exitInputErr, errInvalidUsage
@@ -1193,32 +1241,9 @@ func runPageCreate(args []string, stdout, stderr io.Writer) (int, error) {
 		fmt.Fprintln(stderr, "page create: specify either --markdown or --adf, not both")
 		return exitInputErr, errInvalidUsage
 	}
-
-	var body *adf.Node
-	if markdownFile != "" {
-		src, err := os.ReadFile(markdownFile)
-		if err != nil {
-			fmt.Fprintln(stderr, "reading markdown:", err)
-			return exitInputErr, err
-		}
-		doc, err := adf.Convert(src)
-		if err != nil {
-			fmt.Fprintln(stderr, "parse markdown:", err)
-			return exitParseErr, err
-		}
-		body = &doc
-	} else if adfFile != "" {
-		adfBytes, err := os.ReadFile(adfFile)
-		if err != nil {
-			fmt.Fprintln(stderr, "reading ADF:", err)
-			return exitInputErr, err
-		}
-		doc, err := adf.UnmarshalDoc(adfBytes)
-		if err != nil {
-			fmt.Fprintln(stderr, "invalid ADF:", err)
-			return exitParseErr, err
-		}
-		body = &doc
+	if fullWidth && fixedWidth {
+		fmt.Fprintln(stderr, "page create: --full-width and --fixed-width are mutually exclusive")
+		return exitInputErr, errInvalidUsage
 	}
 
 	client, ok := buildClient(cloud, email, token, stderr)
@@ -1226,10 +1251,61 @@ func runPageCreate(args []string, stdout, stderr io.Writer) (int, error) {
 		return exitUnknownErr, nil
 	}
 
-	result, err := client.CreatePage(spaceID, parentID, title, body)
+	var result *adf.PageCreateResult
+
+	if markdownFile != "" {
+		src, err := os.ReadFile(markdownFile)
+		if err != nil {
+			fmt.Fprintln(stderr, "reading markdown:", err)
+			return exitInputErr, err
+		}
+		if adf.RequiresStorageFormat(string(src)) {
+			// Markdown contains :::properties or other storage-only macros.
+			// Convert to Confluence storage XML and upload with representation=storage.
+			storageBody, sErr := adf.MarkdownToStorage(src)
+			if sErr != nil {
+				fmt.Fprintln(stderr, "convert markdown to storage:", sErr)
+				return exitParseErr, sErr
+			}
+			result, err = client.CreatePageStorage(spaceID, parentID, title, storageBody)
+		} else {
+			doc, cErr := adf.Convert(src)
+			if cErr != nil {
+				fmt.Fprintln(stderr, "parse markdown:", cErr)
+				return exitParseErr, cErr
+			}
+			result, err = client.CreatePage(spaceID, parentID, title, &doc)
+		}
+	} else if adfFile != "" {
+		adfBytes, err := os.ReadFile(adfFile)
+		if err != nil {
+			fmt.Fprintln(stderr, "reading ADF:", err)
+			return exitInputErr, err
+		}
+		doc, uErr := adf.UnmarshalDoc(adfBytes)
+		if uErr != nil {
+			fmt.Fprintln(stderr, "invalid ADF:", uErr)
+			return exitParseErr, uErr
+		}
+		result, err = client.CreatePage(spaceID, parentID, title, &doc)
+	} else {
+		result, err = client.CreatePage(spaceID, parentID, title, nil)
+	}
+
 	if err != nil {
 		fmt.Fprintln(stderr, "error:", err)
 		return exitUnknownErr, err
+	}
+
+	// Apply page appearance (full-width / fixed-width) if requested.
+	if fullWidth || fixedWidth {
+		appearance := adf.PageAppearanceFullWidth
+		if fixedWidth {
+			appearance = adf.PageAppearanceFixedWidth
+		}
+		if appErr := client.SetPageAppearance(result.ID, appearance); appErr != nil {
+			fmt.Fprintf(stderr, "warning: page created but appearance could not be set: %v\n", appErr)
+		}
 	}
 
 	out := map[string]string{
