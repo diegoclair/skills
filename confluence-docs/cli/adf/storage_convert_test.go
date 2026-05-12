@@ -10,6 +10,8 @@ func TestRequiresStorageFormat_positive(t *testing.T) {
 		":::properties\ntipo: reference\n:::\n",
 		"  :::  properties  \ntipo: x\n:::",
 		"## Heading\n\n:::properties\nstatus: ativo\n:::\n",
+		":::properties collapsed\ntipo: reference\n:::\n",
+		"## Heading\n\n:::properties some-future-modifier\nx: y\n:::\n",
 	}
 	for _, c := range cases {
 		if !RequiresStorageFormat(c) {

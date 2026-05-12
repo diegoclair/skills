@@ -41,8 +41,9 @@ func RequiresStorageFormat(markdown string) bool {
 	return propertiesOpenRe.MatchString(markdown)
 }
 
-// propertiesOpenRe matches lines that open a :::properties block.
-var propertiesOpenRe = regexp.MustCompile(`(?im)^[ \t]*:::[ \t]*properties[ \t]*$`)
+// propertiesOpenRe matches lines that open a :::properties block, with or
+// without a trailing modifier (e.g. `:::properties collapsed`).
+var propertiesOpenRe = regexp.MustCompile(`(?im)^[ \t]*:::[ \t]*properties(?:[ \t][^\n]*)?$`)
 
 // extensionOpenRe matches any opening :::<name>[ "title"] line for supported macros.
 // Captures: 1 = name (lowercase), 2 = optional title (without quotes).

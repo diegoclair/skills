@@ -1,5 +1,15 @@
 # Changelog — confluence-docs
 
+## v0.8.4 (2026-05-12) — fix RequiresStorageFormat for `:::properties collapsed`
+
+### Bug fix
+
+`RequiresStorageFormat` regex was anchored with `$` after `properties`, requiring the line to end immediately. After v0.8.3 added the `collapsed` modifier (`:::properties collapsed`), pages using it bypassed the storage path detection — uploaded via `atlas_doc_format`, which wraps macro storage XML in a `codeBlock(language="confluence-storage")` instead of rendering the actual macro. Visible symptom: raw `<ac:structured-macro ac:name="details" ...>` displayed as a code block at the top of the page.
+
+Fix: updated regex to `properties(?:[ \t][^\n]*)?$` — accepts optional trailing modifier text. Added regression tests for `:::properties collapsed` and `:::properties some-future-modifier`.
+
+Pages affected (need re-upload with v0.8.4+): any page authored via `confluence-docs page upload --markdown` using `:::properties collapsed` since v0.8.3.
+
 ## v0.8.3 (2026-05-12) — collapsed properties + labels API
 
 ### New features
