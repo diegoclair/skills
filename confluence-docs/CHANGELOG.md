@@ -1,5 +1,38 @@
 # Changelog — confluence-docs
 
+## v0.9.1 (2026-05-12) — strip remaining project-specific reference files
+
+Diego pointed out that the skill still shipped pt-BR / Lybel-specific reference files (`taxonomy.md` listing "the 6 categories of Lybel's KB", `aliases.md` mapping pt-BR keywords to Lybel categories, `templates.md` with Advisor/Investor/Varejista sheets in pt-BR, and a `workflows.md` heavily wired to Lybel's cloudId, space and parent IDs). Those don't help any other startup adopting the skill — each project has its own categories and aliases, which the agent already learns from the project's Confluence Home page (see `bootstrap.md`).
+
+### Removed
+
+- `reference/taxonomy.md` — Lybel's 6-category schema. Other projects define their own structure on their Home page.
+- `reference/aliases.md` — Lybel's pt-BR keyword→category routing. Each project has its own.
+- `reference/templates.md` — Lybel's page templates (Advisor sheet, Investor sheet, Tech vendor sheet, etc.). The skill now ships `cmd_new` for generic per-type templates; project-specific sheets live in each project's own docs if needed.
+
+### Rewritten as generic
+
+- `reference/bootstrap.md` — removed all Lybel-specific names and pageIds. Now describes the bootstrap principle for any Confluence space.
+- `reference/workflows.md` — removed hardcoded `cloudId`, `space=lybel`, parentIds, and the 10 Lybel-specific recipes (Add lawyer, Add retailer, Add investor, etc.). Now describes 8 universal workflows (bootstrap, search, read, create, update, move, delete, regenerate KM) using placeholders.
+- `SKILL.md` — updated reference list to drop the 3 removed files; clarified that project-specific routing lives on each project's Confluence Home, not in the skill.
+
+### What stays
+
+- `reference/doc-types.md` — canonical English spec of the 5 doc types (added in v0.9.0).
+
+### Doc cleanup
+
+- `cli/README.md` and `cli/SETUP.md` — replaced remaining hardcoded `lybel.atlassian.net` / `Lybel knowledge base` mentions with generic placeholders.
+- `cmd_check --help` — clarified `--space` default (resolved from `$ATLASSIAN_CLOUD` or credentials config; was misleadingly documented as `default: lybel`).
+
+### What this means for projects already using the skill
+
+The CLI binary behavior is unchanged. Only reference markdown files were removed and docs were generalized. Projects that relied on `reference/taxonomy.md` etc. as fallback documentation should rely on their own Confluence Home page (which is the recommended source per `bootstrap.md`) or check older skill versions for the file content if needed.
+
+### Known follow-ups (v0.10.0)
+
+- `defaultCloud = "lybel"` and `homePageID = "164232"` / `homeSpaceID = "131352"` are still hardcoded constants in `main.go`. These are used by the `index` and `home` commands as fallback when no env/config is set. To be moved to per-project config in v0.10.0.
+
 ## v0.9.0 (2026-05-12) — English skill, canonical spec, owner mentions
 
 This is a **breaking release** for projects whose tooling depended on pt-BR string output (template headers, km-generated content). The skill's user-facing strings are now in English, becoming usable by any startup globally. The frontmatter parser remains permissive — old pages with `tipo:`, `criado:`, etc. still work; only NEWLY-generated content (via `new`, `km generate`) uses English keys.

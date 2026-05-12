@@ -158,8 +158,7 @@ Exit codes:
 
 ## 4. Cloud Configuration
 
-By default `confluence-docs` connects to `lybel.atlassian.net`. To use a different
-Confluence instance:
+`confluence-docs` connects to `<subdomain>.atlassian.net`. Set your subdomain:
 
 ```bash
 # Via flag (single command)
@@ -169,7 +168,7 @@ confluence-docs page get --cloud mycompany --page-id 123
 export ATLASSIAN_CLOUD=mycompany
 ```
 
-The value is the subdomain only (e.g. `lybel`, not `lybel.atlassian.net`).
+The value is the subdomain only (e.g. `mycompany`, not `mycompany.atlassian.net`).
 
 ---
 
@@ -193,7 +192,7 @@ your work email (e.g. `you@yourcompany.com`). Check it at
 
 ### Network error / exit code 3
 
-- Confirm you can reach `https://lybel.atlassian.net` in a browser.
+- Confirm you can reach `https://<your-subdomain>.atlassian.net` in a browser.
 - If behind a VPN, make sure it is connected.
 - Corporate proxies: set `HTTPS_PROXY` in your environment if needed.
 

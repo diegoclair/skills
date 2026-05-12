@@ -65,7 +65,7 @@ In **EVERY new session**, just use the Home commands directly. The CLI handles f
    - Page ID Index (if present)
    - Organization rules
 
-3. **Fall back to the generic reference files** (`reference/taxonomy.md`, `reference/aliases.md`, etc.) **only if both the CLI and MCP are inaccessible**.
+3. **Fall back to the generic reference files** in `reference/` (`bootstrap.md`, `workflows.md`, `doc-types.md`) **only if both the CLI and MCP are inaccessible** — they describe procedures, not current data.
 
 ### Cache lifecycle (the contract)
 
@@ -89,11 +89,11 @@ This skill is deliberately **timeless**. It stores no specific names (advisors, 
 
 ## Reference files
 
-- `reference/bootstrap.md` — principle + detailed bootstrap procedure
-- `reference/taxonomy.md` — generic structure of the space (fallback)
-- `reference/aliases.md` — generic alias patterns (fallback)
-- `reference/templates.md` — formats by page type (partner sheet, meeting notes, ADR, etc.)
-- `reference/workflows.md` — standard steps (search, create, update, status)
+- `reference/bootstrap.md` — principle + bootstrap procedure (how the skill orients itself per session)
+- `reference/doc-types.md` — canonical spec of the 5 doc types (`reference`, `decision`, `explanation`, `how-to`, `capture`), frontmatter, anti-patterns
+- `reference/workflows.md` — generic workflows (search, read, create, update, move, delete, regenerate KM)
+
+Project-specific routing (your category structure, aliases, templates) lives on **your Confluence Home page**, fetched dynamically — the skill ships zero project-specific data.
 
 ## Default workflows
 
@@ -155,10 +155,12 @@ confluence-docs page get --page-id <id> --format export_view  # rendered HTML
 
 ### 3. Create — "cria página pra Z"
 
-1. Use the Home's "Where do I put X?" map to discover the correct category/parent.
-2. Choose the template in `reference/templates.md`.
-3. **Confirm with the user** the final title, parent and template before creating.
-4. Write the content as markdown to a temp file (e.g. `/tmp/lybel-edit/page.md`). The CLI's `adf` converter supports Confluence macros (`[TOC]`, `:::expand`, `:::warning`, etc.) via extended markdown.
+1. Run `confluence-docs check --title "..."` first to surface near-duplicates.
+2. Use the Home's "where do I put X?" map (or equivalent on your project) to discover the correct parent page.
+3. Decide the doc type (`reference` / `decision` / `explanation` / `how-to` / `capture`) — see `reference/doc-types.md`.
+4. Generate a template: `confluence-docs new <type> --title "..." [--parent-id ID]`.
+5. **Confirm with the user** the final title, parent and type before creating.
+6. Write the content as markdown to a temp file. The CLI's `adf` converter supports Confluence macros (`[TOC]`, `:::expand`, `:::warning`, `:::properties`, etc.) via extended markdown.
 5. Create directly via the CLI (single command, no MCP round-trip):
    ```
    confluence-docs page create \
@@ -323,11 +325,11 @@ When updating a page, bump the "Atualizado em" date. On first creation, author c
 
 For decision/proposal/strategy pages, organize the body around three sections:
 
-1. **Contexto** — where the page comes from, which project/moment it serves, what bigger scope it sits in
-2. **Problema** — what is being solved, what hurts, what constraints exist
-3. **Solução (possível)** — proposed approach, options, tradeoffs, concrete scope
+1. **Context** — where the page comes from, which project/moment it serves, what bigger scope it sits in
+2. **Problem** — what is being solved, what hurts, what constraints exist
+3. **Solution (proposed)** — proposed approach, options, tradeoffs, concrete scope
 
-See `reference/templates.md` → "Decision / Proposal / Strategy" template for the canonical form.
+See `reference/doc-types.md` § Section 2 (Decision type) for the canonical structure.
 
 **Why this matters**: the knowledge base becomes predictable — any reader (human or AI) knows where to find the motivation, the pain, and the plan without re-reading everything. Reduces onboarding cost and review time.
 

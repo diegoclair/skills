@@ -137,7 +137,7 @@ func runCheck(args []string, stdout, stderr io.Writer) (int, error) {
 			fmt.Fprintln(stdout, "  --type TYPE         doc type label (reference, decision, etc.) to filter by")
 			fmt.Fprintln(stdout, "  --tags TAGS         comma-separated label names to filter by")
 			fmt.Fprintln(stdout, "  --threshold FLOAT   similarity threshold for suggestion (default 0.4)")
-			fmt.Fprintln(stdout, "  --space KEY         space key (default: lybel)")
+			fmt.Fprintln(stdout, "  --space KEY         Confluence space key (default: from $ATLASSIAN_CLOUD or credentials config)")
 			fmt.Fprintln(stdout, "  --limit N           max candidates to fetch (default: 20)")
 			fmt.Fprintln(stdout, "  --text              plain-text output instead of JSON")
 			return exitOK, nil

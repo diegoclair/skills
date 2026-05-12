@@ -1,7 +1,10 @@
 # confluence-docs
 
-Confluence ADF toolkit and skill for Claude. Edits Confluence pages without
-destroying macros, and drives the Lybel knowledge base.
+Confluence ADF toolkit and skill for Claude. Edits Confluence Cloud pages
+without destroying macros; consolidates a knowledge base into a classified
+Knowledge Map; supports `:::properties`, smart links, page labels, and user
+`@mentions` out of the box. Designed for any team running a Confluence Cloud
+space alongside Claude (or any other LLM agent) that maintains docs.
 
 ---
 
@@ -66,7 +69,7 @@ Route by exit code:
 
 Conduct entirely in chat — no terminal commands needed from the user.
 
-1. Tell the user (in their language; for Lybel team, use Portuguese):
+1. Tell the user (in their language — match whatever they wrote to you; for a Portuguese-speaking user, use Portuguese):
 
    > "Preciso de um token do Atlassian pra conectar ao Confluence. Abre essa
    > URL no navegador, clica em **Create API token**, dá um nome (ex:
@@ -166,7 +169,7 @@ Conduct entirely in chat — no terminal commands needed from the user.
   guarantee.
 - Talks directly to the Confluence Cloud REST API v2, bypassing MCP for large
   pages (>50 kB) where tool calls may time out.
-- Manages the Page ID Index table on the Lybel Home page.
+- Manages the Page ID Index table on your project's Home page.
 - Validates ADF structure and reports errors.
 
 ### Quick install
@@ -219,11 +222,11 @@ make install   # builds and copies to ~/.claude/skills/confluence-docs/bin/confl
 | `page reorder` | Reposition a page among its siblings or append it under a different parent. Flags: `--page-id ID` plus exactly one of `--before TARGET_ID` / `--after TARGET_ID` / `--append-to PARENT_ID`. Calls the v1 `move/{position}/{targetId}` endpoint; body and title are not touched |
 | `page delete` | Soft-delete a page (sends to Confluence trash, restorable). Requires `--yes` to confirm. Alias: `page trash` |
 | `page children` | List direct children of a page (TSV: id, title). Old name `list-children` still works as alias |
-| `search` | CQL search via the v1 API. TSV output (`pageId\ttitle\turl\texcerpt`). Defaults to `space="lybel" AND type="page"` |
+| `search` | CQL search via the v1 API. TSV output (`pageId\ttitle\turl\texcerpt`). Defaults to `space="<your space key>" AND type="page"` (auto-resolved from credentials) |
 | `home` | Local Home-page cache. Verbs: `--refresh` (force GET + cache), `--status` (metadata), `--show` (text), `--query "X"` (grep), `--digest`. Cache at `~/.cache/confluence-docs/home.json`. Read-only — writes always GET fresh ADF first |
 | `lint` | Validate ADF structure and report errors/warnings |
 | `extract-body` | Unwrap the ADF body from an MCP `getConfluencePage` response |
-| `index` | Manage the Page ID Index table on the Lybel Home page |
+| `index` | Manage the Page ID Index table on your project's Home page |
 
 Run `confluence-docs --help` or `confluence-docs <command> --help` for full flag
 documentation.
