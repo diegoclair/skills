@@ -883,11 +883,43 @@ func (c *ConfluenceClient) BaseURL() string {
 // ---------- Spaces ----------
 
 // SpaceResult is a single space returned by the list-spaces API.
+//
+// IMPORTANT: in Confluence Cloud's v2 API, the `key` field is the *internal*
+// space identifier (typically a hex hash like "f53b318e3ee044c49c76ddaae276f180"
+// for non-personal spaces). The HUMAN-READABLE key — the one used in URLs like
+// /wiki/spaces/<KEY>/pages/... and in CQL queries (`space = "<KEY>"`) — is
+// `currentActiveAlias`. We surface that as `Key` after unmarshaling so callers
+// always work with the canonical user-facing key.
 type SpaceResult struct {
 	ID         string `json:"id"`
-	Key        string `json:"key"`
+	Key        string `json:"-"` // populated from currentActiveAlias (see below)
 	Name       string `json:"name"`
 	HomepageID string `json:"homepageId"`
+}
+
+// spaceResultRaw mirrors the v2 API payload before we collapse it into the
+// SpaceResult exposed publicly.
+type spaceResultRaw struct {
+	ID                  string `json:"id"`
+	Key                 string `json:"key"`                 // internal hash key (v2)
+	CurrentActiveAlias  string `json:"currentActiveAlias"`  // human-readable URL/CQL key
+	Name                string `json:"name"`
+	HomepageID          string `json:"homepageId"`
+}
+
+func (raw spaceResultRaw) toResult() SpaceResult {
+	// Prefer the human alias; fall back to the raw key (personal spaces have
+	// alias == key with a ~ prefix anyway).
+	key := raw.CurrentActiveAlias
+	if key == "" {
+		key = raw.Key
+	}
+	return SpaceResult{
+		ID:         raw.ID,
+		Key:        key,
+		Name:       raw.Name,
+		HomepageID: raw.HomepageID,
+	}
 }
 
 // ListSpaces fetches up to 250 current spaces accessible to the authenticated
@@ -898,12 +930,16 @@ func (c *ConfluenceClient) ListSpaces() ([]SpaceResult, error) {
 		return nil, fmt.Errorf("list spaces: %w", err)
 	}
 	var resp struct {
-		Results []SpaceResult `json:"results"`
+		Results []spaceResultRaw `json:"results"`
 	}
 	if err := json.Unmarshal(data, &resp); err != nil {
 		return nil, fmt.Errorf("parse spaces response: %w", err)
 	}
-	return resp.Results, nil
+	out := make([]SpaceResult, 0, len(resp.Results))
+	for _, raw := range resp.Results {
+		out = append(out, raw.toResult())
+	}
+	return out, nil
 }
 
 // ---------- Page Properties (appearance) ----------

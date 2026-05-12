@@ -108,8 +108,21 @@ func (m *mockRoundTripper) RoundTrip(_ *http.Request) (*http.Response, error) {
 }
 
 // spaceListJSON builds the JSON body for a /api/v2/spaces response.
+// Confluence v2 returns the human key in `currentActiveAlias`, not in `key`
+// (which holds an internal hash for non-personal spaces). We mirror that
+// shape here so the parser exercises the real-world path.
 func spaceListJSON(spaces []adf.SpaceResult) string {
-	b, _ := json.Marshal(map[string]any{"results": spaces})
+	results := make([]map[string]any, 0, len(spaces))
+	for _, s := range spaces {
+		results = append(results, map[string]any{
+			"id":                 s.ID,
+			"key":                s.Key, // internal hash in real API; here we use the human key — harmless because we read alias first
+			"currentActiveAlias": s.Key, // the human key from tests
+			"name":               s.Name,
+			"homepageId":         s.HomepageID,
+		})
+	}
+	b, _ := json.Marshal(map[string]any{"results": results})
 	return string(b)
 }
 

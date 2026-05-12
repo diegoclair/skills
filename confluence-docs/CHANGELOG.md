@@ -1,5 +1,32 @@
 # Changelog — confluence-docs
 
+## v0.10.1 (2026-05-12) — fix space key + setup token prefill
+
+Two regressions from v0.10.0 reported by Diego right after release.
+
+### Bug 1 — `space.key` was the internal hash instead of the human URL key
+
+The v2 API `/wiki/api/v2/spaces` returns TWO distinct fields per space:
+
+- `key` — an internal hex hash for non-personal spaces (e.g. `f53b318e3ee044c49c76ddaae276f180`)
+- `currentActiveAlias` — the human-readable key used in URLs and CQL queries (e.g. `lybel`)
+
+v0.10.0 persisted `key`, so `space list` / `space current` showed the internal hash. Operational impact was zero (Confluence accepted both forms internally), but the UX was confusing and `--space lybel` flag could in theory mismatch a stored hash.
+
+Fix: `SpaceResult.Key` now sources from `currentActiveAlias` first, falling back to `key` (which is fine for personal spaces where both fields are identical with a `~` prefix).
+
+Existing users on v0.10.0 with a stored hash: re-run `confluence-docs space use <human-key>` once to rewrite the config with the correct alias. v0.10.1+ wizard writes it correctly from the start.
+
+### Bug 2 — `setup` wizard did not prefill an existing token
+
+Running `confluence-docs setup` after a v0.9.x install (credentials file already had email + token) prompted for the token again instead of showing it pre-filled. v0.9.x correctly prefilled both fields and only asked for the new ones; the v0.10.0 refactor accidentally restricted prefill to `--reconfigure` only.
+
+Fix: prefill applies on every interactive run, not just `--reconfigure`. The wizard masks the token, lets the user press Enter to keep, or paste a new one to override.
+
+### Feedback noted
+
+Saving to project memory: when subagent will code against an external API (Atlassian, GitHub, etc.) and credentials are available, validate the actual JSON response shape first (1 curl/Python request) and pass it as the contract to the subagent. Don't trust the doc alone. Would have caught Bug 1 in 30 seconds.
+
 ## v0.10.0 (2026-05-12) — split credentials/config + multi-space support
 
 ### Overview

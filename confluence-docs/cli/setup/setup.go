@@ -537,19 +537,19 @@ func runWithClient(args []string, stdin io.Reader, stdout, stderr io.Writer, cli
 		return runNonInteractive(email, token, stdout, stderr, client)
 	}
 
-	// Interactive wizard (also handles --reconfigure which re-runs wizard with prefill).
+	// Interactive wizard. Always prefill from existing credentials when
+	// present — the wizard shows them masked and lets the user press Enter
+	// to keep, so first-time `setup` after a v0.9.x install doesn't force
+	// the user to re-paste the token they already have.
 	prefillEmail := email
 	prefillToken := token
-	if doReconfigure {
-		// Prefill from existing credentials if not overridden by flags.
-		if prefillEmail == "" || prefillToken == "" {
-			existEmail, existToken, _ := ReadCredsFile(stderr)
-			if prefillEmail == "" {
-				prefillEmail = existEmail
-			}
-			if prefillToken == "" {
-				prefillToken = existToken
-			}
+	if prefillEmail == "" || prefillToken == "" {
+		existEmail, existToken, _ := ReadCredsFile(stderr)
+		if prefillEmail == "" {
+			prefillEmail = existEmail
+		}
+		if prefillToken == "" {
+			prefillToken = existToken
 		}
 	}
 	return runInteractive(prefillEmail, prefillToken, stdin, stdout, stderr, client)
