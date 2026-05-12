@@ -138,14 +138,14 @@ func TestKMRender_SmallInput(t *testing.T) {
 		t.Error("expected :::properties block")
 	}
 	// Must contain the rules section as own h2 (with info panel inside).
-	if !strings.Contains(md, "## Regras pra IA") {
-		t.Error("expected '## Regras pra IA' h2 section")
+	if !strings.Contains(md, "## Rules for AI") {
+		t.Error("expected '## Rules for AI' h2 section")
 	}
-	if !strings.Contains(md, ":::info Sequência obrigatória") {
-		t.Error("expected ':::info Sequência obrigatória' panel inside Regras pra IA")
+	if !strings.Contains(md, ":::info Required sequence") {
+		t.Error("expected ':::info Required sequence' panel inside Rules for AI")
 	}
 	// Should NOT contain :::expand for sections with ≤12 entries.
-	if strings.Contains(md, ":::expand Ver as") {
+	if strings.Contains(md, ":::expand Show all") {
 		t.Error("should not have :::expand for small tipo sections (≤12 entries)")
 	}
 	// Page entries must appear.
@@ -169,7 +169,7 @@ func TestKMRender_ExpandForLargeSection(t *testing.T) {
 
 	md := renderKMMD(pages)
 
-	if !strings.Contains(md, ":::expand Ver as 14 páginas") {
+	if !strings.Contains(md, ":::expand Show all 14 pages") {
 		t.Error("expected :::expand block for reference section with 14 items")
 	}
 }
@@ -184,7 +184,7 @@ func TestKMRender_RealAnomaliesSection(t *testing.T) {
 	md := renderKMMD(pages)
 
 	// :::expand anomalies block must appear.
-	if !strings.Contains(md, ":::expand 1 páginas com anomalia real pra revisão") {
+	if !strings.Contains(md, ":::expand 1 pages with real anomaly for review") {
 		t.Error("expected anomaly expand block")
 	}
 	if !strings.Contains(md, "Borderline Doc") {
@@ -212,8 +212,8 @@ func TestKMRender_NoAnomalies(t *testing.T) {
 	}
 	md := renderKMMD(pages)
 
-	if !strings.Contains(md, "_Nenhuma anomalia real flagada._") {
-		t.Error("expected 'Nenhuma anomalia real flagada.' when no anomalies")
+	if !strings.Contains(md, "_No real anomalies flagged._") {
+		t.Error("expected '_No real anomalies flagged._' when no anomalies")
 	}
 }
 
@@ -410,8 +410,8 @@ func TestKMGenerate_NoInput_EmptyDir(t *testing.T) {
 	if !strings.Contains(out, ":::properties") {
 		t.Errorf("expected :::properties in output")
 	}
-	if !strings.Contains(out, "## Regras pra IA") {
-		t.Errorf("expected '## Regras pra IA' h2 section")
+	if !strings.Contains(out, "## Rules for AI") {
+		t.Errorf("expected '## Rules for AI' h2 section")
 	}
 }
 

@@ -27,6 +27,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // configPath returns the platform-appropriate credentials file path via
@@ -996,4 +997,177 @@ func (c *ConfluenceClient) RemoveLabel(pageID, label string) error {
 	path := fmt.Sprintf("/rest/api/content/%s/label/%s", pageID, url.PathEscape(label))
 	_, _, err := c.doRequest("DELETE", path, nil)
 	return err
+}
+
+// ---------- User lookup ----------
+
+// UserInfo holds the minimal user info needed for mention links.
+type UserInfo struct {
+	AccountID   string `json:"accountId"`
+	DisplayName string `json:"displayName"`
+	Email       string `json:"email"`
+}
+
+// LookupUser resolves a query string (handle without @, or email) to a
+// Confluence Cloud user via the v1 user picker endpoint. Returns (nil, nil)
+// when no match is found so callers can fall back gracefully.
+func (c *ConfluenceClient) LookupUser(query string) (*UserInfo, error) {
+	q := url.Values{}
+	q.Set("query", query)
+	q.Set("limit", "5")
+	path := "/rest/api/user/picker?" + q.Encode()
+
+	data, _, err := c.doRequest("GET", path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("user picker %q: %w", query, err)
+	}
+
+	// The v1 user picker returns:
+	// {"users": [{"user": {"accountId": "...", "displayName": "...", "emailAddress": "..."}}]}
+	var resp struct {
+		Users []struct {
+			User struct {
+				AccountID    string `json:"accountId"`
+				DisplayName  string `json:"displayName"`
+				EmailAddress string `json:"emailAddress"`
+			} `json:"user"`
+		} `json:"users"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, fmt.Errorf("parse user picker response: %w", err)
+	}
+	if len(resp.Users) == 0 {
+		return nil, nil
+	}
+	u := resp.Users[0].User
+	return &UserInfo{
+		AccountID:   u.AccountID,
+		DisplayName: u.DisplayName,
+		Email:       u.EmailAddress,
+	}, nil
+}
+
+// ---------- User cache ----------
+
+// userCachePath returns the platform-appropriate path to the user cache file:
+//   - Linux:   $XDG_CACHE_HOME/confluence-docs/users.json
+//   - macOS:   ~/Library/Caches/confluence-docs/users.json
+//   - Windows: %LocalAppData%/confluence-docs/users.json
+func userCachePath() (string, error) {
+	dir, err := os.UserCacheDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve cache dir: %w", err)
+	}
+	return filepath.Join(dir, "confluence-docs", "users.json"), nil
+}
+
+// userCacheTTL is the maximum age before a user cache entry is considered stale.
+const userCacheTTL = 24 * time.Hour
+
+// UserCacheFile is the on-disk representation of the user lookup cache.
+type UserCacheFile struct {
+	Version   int                 `json:"version"`
+	FetchedAt time.Time           `json:"fetchedAt"`
+	Users     map[string]UserInfo `json:"users"` // key: @handle or email
+}
+
+// LoadUserCache reads the user cache from disk. Returns an empty cache (not
+// nil) when the file doesn't exist or is unreadable, so callers always get a
+// usable map.
+func LoadUserCache() *UserCacheFile {
+	path, err := userCachePath()
+	if err != nil {
+		return &UserCacheFile{Version: 1, Users: map[string]UserInfo{}}
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return &UserCacheFile{Version: 1, Users: map[string]UserInfo{}}
+	}
+	var c UserCacheFile
+	if err := json.Unmarshal(data, &c); err != nil {
+		return &UserCacheFile{Version: 1, Users: map[string]UserInfo{}}
+	}
+	if c.Users == nil {
+		c.Users = map[string]UserInfo{}
+	}
+	return &c
+}
+
+// SaveUserCache writes the user cache to disk, creating parent dirs as needed.
+// Errors are silently swallowed — cache writes are best-effort.
+func SaveUserCache(c *UserCacheFile) error {
+	path, err := userCachePath()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create cache dir: %w", err)
+	}
+	data, err := json.MarshalIndent(c, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal user cache: %w", err)
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		return fmt.Errorf("write user cache: %w", err)
+	}
+	return nil
+}
+
+// ---------- ClientUserResolver ----------
+
+// ClientUserResolver implements UserResolver using a ConfluenceClient with an
+// in-process memory cache (populated from/saved to the persistent disk cache).
+type ClientUserResolver struct {
+	client    *ConfluenceClient
+	diskCache *UserCacheFile    // loaded once from disk
+	mem       map[string]string // handle/email → accountId (in-process cache)
+	dirty     bool              // true if mem has unsaved entries
+}
+
+// NewClientUserResolver creates a ClientUserResolver backed by client. It
+// loads the persistent user cache from disk on construction.
+func NewClientUserResolver(client *ConfluenceClient) *ClientUserResolver {
+	diskCache := LoadUserCache()
+	// Pre-populate in-process cache from disk, skipping expired entries.
+	mem := make(map[string]string, len(diskCache.Users))
+	if time.Since(diskCache.FetchedAt) < userCacheTTL {
+		for k, v := range diskCache.Users {
+			mem[k] = v.AccountID
+		}
+	}
+	return &ClientUserResolver{
+		client:    client,
+		diskCache: diskCache,
+		mem:       mem,
+	}
+}
+
+// Resolve returns the accountId for the given handle or email. Returns ("", false)
+// on cache miss + network failure so callers can fall back gracefully.
+func (r *ClientUserResolver) Resolve(query string) (accountID string, ok bool) {
+	if id, found := r.mem[query]; found {
+		return id, id != ""
+	}
+	// Not in memory cache — query the API.
+	info, err := r.client.LookupUser(query)
+	if err != nil || info == nil {
+		// Cache negative result so we don't re-query this run.
+		r.mem[query] = ""
+		return "", false
+	}
+	r.mem[query] = info.AccountID
+	// Also write back to disk cache map with current timestamp.
+	r.diskCache.Users[query] = *info
+	r.diskCache.FetchedAt = time.Now()
+	r.dirty = true
+	return info.AccountID, true
+}
+
+// Flush persists in-memory changes to the disk cache. Errors are silently
+// swallowed — cache persistence is best-effort.
+func (r *ClientUserResolver) Flush() {
+	if !r.dirty {
+		return
+	}
+	_ = SaveUserCache(r.diskCache)
 }

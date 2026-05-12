@@ -1,4 +1,4 @@
-// cmd_new.go — `confluence-docs new <tipo>` subcommand.
+// cmd_new.go — `confluence-docs new <type>` subcommand.
 //
 // Generates a markdown template for a new Confluence page of the given type,
 // pre-filled with a :::properties block, TL;DR, and the structural headings
@@ -6,11 +6,11 @@
 //
 // Usage:
 //
-//	confluence-docs new reference --title "Análise Stripe Brasil" [--parent-id ID] [--full-width]
-//	confluence-docs new decision  --title "..." [--supersedes ID]
+//	confluence-docs new reference   --title "Stripe Brazil Analysis" [--parent-id ID] [--full-width]
+//	confluence-docs new decision    --title "..." [--supersedes ID]
 //	confluence-docs new explanation --title "..."
-//	confluence-docs new how-to    --title "..."
-//	confluence-docs new capture   --title "..."
+//	confluence-docs new how-to      --title "..."
+//	confluence-docs new capture     --title "..."
 //
 // The generated markdown is written to stdout (or --output FILE).
 // Owner is resolved from git config user.email, falling back to $USER.
@@ -25,7 +25,7 @@ import (
 	"time"
 )
 
-// docType is one of the five standard Lybel doc types.
+// docType is one of the five standard doc types.
 type docType string
 
 const (
@@ -40,7 +40,7 @@ var validDocTypes = []docType{
 	docTypeReference, docTypeDecision, docTypeExplanation, docTypeHowTo, docTypeCapture,
 }
 
-// runNew implements `confluence-docs new <tipo>`.
+// runNew implements `confluence-docs new <type>`.
 func runNew(args []string, stdin io.Reader, stdout, stderr io.Writer) (int, error) {
 	if len(args) == 0 {
 		fmt.Fprintln(stderr, "new: requires a doc type: reference, decision, explanation, how-to, capture")
@@ -171,7 +171,7 @@ func printNewHelp(w io.Writer) {
 	fmt.Fprintln(w, "  confluence-docs page create --space-id 131352 --parent-id PARENT --title \"My Title\" --markdown /tmp/page.md")
 }
 
-// resolveOwnerEmail reads git config user.email, falling back to $USER@lybel.
+// resolveOwnerEmail reads git config user.email, falling back to $USER.
 func resolveOwnerEmail() string {
 	out, err := exec.Command("git", "config", "--global", "user.email").Output()
 	if err == nil {
@@ -200,8 +200,8 @@ func generateTemplate(dt docType, title, owner, today, parentID, supersedes stri
 
 	// Properties block
 	sb.WriteString(":::properties\n")
-	sb.WriteString(fmt.Sprintf("tipo: %s\n", string(dt)))
-	sb.WriteString("status: rascunho\n")
+	sb.WriteString(fmt.Sprintf("type: %s\n", string(dt)))
+	sb.WriteString("status: draft\n")
 	sb.WriteString(fmt.Sprintf("owner: %s\n", owner))
 	if parentID != "" {
 		sb.WriteString(fmt.Sprintf("parent-id: %s\n", parentID))
@@ -209,9 +209,9 @@ func generateTemplate(dt docType, title, owner, today, parentID, supersedes stri
 	if dt == docTypeDecision && supersedes != "" {
 		sb.WriteString(fmt.Sprintf("supersedes: [[id:%s]]\n", supersedes))
 	}
-	sb.WriteString("relacionados: \"\"\n")
-	sb.WriteString(fmt.Sprintf("criado: %s\n", today))
-	sb.WriteString(fmt.Sprintf("atualizado: %s\n", today))
+	sb.WriteString("related: \"\"\n")
+	sb.WriteString(fmt.Sprintf("created: %s\n", today))
+	sb.WriteString(fmt.Sprintf("updated: %s\n", today))
 	if fullWidth {
 		sb.WriteString("layout: full-width\n")
 	}
@@ -243,82 +243,82 @@ func generateTemplate(dt docType, title, owner, today, parentID, supersedes stri
 func tldrPlaceholder(dt docType) string {
 	switch dt {
 	case docTypeReference:
-		return "_Uma frase resumindo o que é, por que importa e qual é o estado atual._"
+		return "_A sentence summarizing what it is, why it matters, and the current state._"
 	case docTypeDecision:
-		return "_Decisão: [o que foi decidido]. Motivo: [por quê]. Alternativas consideradas: [lista breve]._"
+		return "_Decision: [what was decided]. Reason: [why]. Alternatives considered: [brief list]._"
 	case docTypeExplanation:
-		return "_Em uma frase, o que este conceito é e por que existe._"
+		return "_In one sentence, what this concept is and why it exists._"
 	case docTypeHowTo:
-		return "_Quando usar este guia e o que ele entrega ao final._"
+		return "_When to use this guide and what it delivers at the end._"
 	case docTypeCapture:
-		return "_Ideia / insight principal em uma frase._"
+		return "_Main idea / insight in one sentence._"
 	default:
-		return "_Resumo em uma frase._"
+		return "_One-sentence summary._"
 	}
 }
 
 func writeReferenceBody(sb *strings.Builder, title string) {
-	sb.WriteString("## Contexto\n\n")
-	sb.WriteString("_Por que esta página existe? Qual projeto ou decisão a motivou?_\n\n")
-	sb.WriteString("## O que é\n\n")
-	sb.WriteString(fmt.Sprintf("_Descrição objetiva de `%s`._\n\n", title))
-	sb.WriteString("## Como funciona / como usamos\n\n")
-	sb.WriteString("_Detalhe técnico, comercial ou operacional relevante._\n\n")
-	sb.WriteString("## Status atual\n\n")
-	sb.WriteString("_Status, limitações conhecidas, próximos passos._\n\n")
-	sb.WriteString("## Links e referências\n\n")
-	sb.WriteString("- [documentação oficial](URL)\n")
+	sb.WriteString("## Context\n\n")
+	sb.WriteString("_Why does this page exist? Which project or decision motivated it?_\n\n")
+	sb.WriteString("## Identification\n\n")
+	sb.WriteString(fmt.Sprintf("_Objective description of `%s`._\n\n", title))
+	sb.WriteString("## Attributes\n\n")
+	sb.WriteString("_Relevant technical, commercial, or operational detail._\n\n")
+	sb.WriteString("## Relevance\n\n")
+	sb.WriteString("_Current status, known limitations, next steps._\n\n")
+	sb.WriteString("## References\n\n")
+	sb.WriteString("- [official documentation](URL)\n")
 }
 
 func writeDecisionBody(sb *strings.Builder, title string) {
-	sb.WriteString("## Contexto\n\n")
-	sb.WriteString("_Qual problema ou oportunidade motivou esta decisão? Qual o escopo?_\n\n")
-	sb.WriteString("## Problema\n\n")
-	sb.WriteString("_O que dói, quais restrições existem, qual o risco de não decidir?_\n\n")
-	sb.WriteString("## Solução adotada\n\n")
-	sb.WriteString(fmt.Sprintf("_Descreva a decisão tomada para `%s`._\n\n", title))
-	sb.WriteString("## Alternativas consideradas\n\n")
-	sb.WriteString("| Alternativa | Prós | Contras | Por que descartada |\n")
+	sb.WriteString("## Context\n\n")
+	sb.WriteString("_What problem or opportunity motivated this decision? What is the scope?_\n\n")
+	sb.WriteString("## Problem\n\n")
+	sb.WriteString("_What hurts, what constraints exist, what is the risk of not deciding?_\n\n")
+	sb.WriteString("## Decision\n\n")
+	sb.WriteString(fmt.Sprintf("_Describe the decision taken for `%s`._\n\n", title))
+	sb.WriteString("## Alternatives considered\n\n")
+	sb.WriteString("| Alternative | Pros | Cons | Why rejected |\n")
 	sb.WriteString("|---|---|---|---|\n")
-	sb.WriteString("| Alternativa A | | | |\n")
-	sb.WriteString("| Alternativa B | | | |\n\n")
-	sb.WriteString("## Consequências\n\n")
-	sb.WriteString("_O que muda? Quais débitos técnicos ou compromissos esta decisão cria?_\n\n")
-	sb.WriteString("## Data de revisão\n\n")
-	sb.WriteString("_Esta decisão deve ser revisitada em: YYYY-MM-DD (ou quando evento X ocorrer)._\n")
+	sb.WriteString("| Alternative A | | | |\n")
+	sb.WriteString("| Alternative B | | | |\n\n")
+	sb.WriteString("## Consequences\n\n")
+	sb.WriteString("_What changes? What technical debt or commitments does this decision create?_\n\n")
+	sb.WriteString("## Status and supersession history\n\n")
+	sb.WriteString("_This decision should be revisited on: YYYY-MM-DD (or when event X occurs)._\n")
 }
 
 func writeExplanationBody(sb *strings.Builder, title string) {
-	sb.WriteString("## Contexto\n\n")
-	sb.WriteString("_Para quem é esta explicação? Qual lacuna de conhecimento ela preenche?_\n\n")
-	sb.WriteString(fmt.Sprintf("## O que é %s\n\n", title))
-	sb.WriteString("_Definição clara, sem jargão interno sem definição._\n\n")
-	sb.WriteString("## Por que existe / por que importa\n\n")
-	sb.WriteString("_Motivação de negócio ou técnica._\n\n")
-	sb.WriteString("## Como se relaciona com o resto\n\n")
-	sb.WriteString("_Relacionamentos com outros conceitos, sistemas ou processos do Lybel._\n\n")
-	sb.WriteString("## Perguntas frequentes\n\n")
-	sb.WriteString("**P:** ...\n**R:** ...\n")
+	sb.WriteString("## Context\n\n")
+	sb.WriteString("_Who is this explanation for? What knowledge gap does it fill?_\n\n")
+	sb.WriteString(fmt.Sprintf("## Analysis: %s\n\n", title))
+	sb.WriteString("_Clear definition, no undefined internal jargon._\n\n")
+	sb.WriteString("## Implications\n\n")
+	sb.WriteString("_Business or technical motivation._\n\n")
+	sb.WriteString("## Next steps\n\n")
+	sb.WriteString("_Relationships with other concepts, systems, or processes._\n\n")
+	sb.WriteString("## FAQ\n\n")
+	sb.WriteString("**Q:** ...\n**A:** ...\n")
 }
 
 func writeHowToBody(sb *strings.Builder, title string) {
-	sb.WriteString("## Pré-requisitos\n\n")
-	sb.WriteString("_O que a pessoa precisa ter/saber antes de seguir este guia?_\n\n")
-	sb.WriteString(fmt.Sprintf("## Como fazer: %s\n\n", title))
-	sb.WriteString("1. Passo um\n")
-	sb.WriteString("2. Passo dois\n")
-	sb.WriteString("3. Passo três\n\n")
-	sb.WriteString("## Verificação\n\n")
-	sb.WriteString("_Como saber que deu certo?_\n\n")
-	sb.WriteString("## Troubleshooting\n\n")
-	sb.WriteString("_Problemas comuns e como resolver._\n")
+	sb.WriteString("## Prerequisites\n\n")
+	sb.WriteString("_What does the reader need to have/know before following this guide?_\n\n")
+	sb.WriteString(fmt.Sprintf("## Steps: %s\n\n", title))
+	sb.WriteString("1. Step one\n")
+	sb.WriteString("2. Step two\n")
+	sb.WriteString("3. Step three\n\n")
+	sb.WriteString("## Verification\n\n")
+	sb.WriteString("_How to know it worked?_\n\n")
+	sb.WriteString("## Common issues\n\n")
+	sb.WriteString("_Common problems and how to resolve them._\n")
 }
 
 func writeCaptureBody(sb *strings.Builder, title string) {
-	sb.WriteString("## Contexto\n\n")
-	sb.WriteString(fmt.Sprintf("_O que motivou esta captura de `%s`?_\n\n", title))
-	sb.WriteString("## Conteúdo\n\n")
-	sb.WriteString("_Coloque aqui o conteúdo principal: ideia, insight, nota de reunião, spike._\n\n")
-	sb.WriteString("## Próximos passos\n\n")
+	sb.WriteString("## Idea\n\n")
+	sb.WriteString(fmt.Sprintf("_What motivated this capture of `%s`?_\n\n", title))
+	sb.WriteString("## Why it might matter\n\n")
+	sb.WriteString("_Put the main content here: idea, insight, meeting note, spike._\n\n")
+	sb.WriteString("## Suggested next step\n\n")
 	sb.WriteString("- [ ] ...\n")
 }

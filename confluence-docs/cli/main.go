@@ -1132,7 +1132,9 @@ func runPageUpload(args []string, stdout, stderr io.Writer) (int, error) {
 		}
 		if adf.RequiresStorageFormat(string(mdBytes)) {
 			// Markdown contains :::properties or other storage-only macros.
-			storageBody, sErr := adf.MarkdownToStorage(mdBytes)
+			// Use client-aware conversion so @handle mentions in :::properties
+			// are resolved to real Confluence user mention links.
+			storageBody, sErr := adf.MarkdownToStorageWithClient(mdBytes, client)
 			if sErr != nil {
 				fmt.Fprintln(stderr, "convert markdown to storage:", sErr)
 				return exitParseErr, sErr
@@ -1266,7 +1268,9 @@ func runPageCreate(args []string, stdout, stderr io.Writer) (int, error) {
 		if adf.RequiresStorageFormat(string(src)) {
 			// Markdown contains :::properties or other storage-only macros.
 			// Convert to Confluence storage XML and upload with representation=storage.
-			storageBody, sErr := adf.MarkdownToStorage(src)
+			// Use client-aware conversion so @handle mentions in :::properties
+			// are resolved to real Confluence user mention links.
+			storageBody, sErr := adf.MarkdownToStorageWithClient(src, client)
 			if sErr != nil {
 				fmt.Fprintln(stderr, "convert markdown to storage:", sErr)
 				return exitParseErr, sErr

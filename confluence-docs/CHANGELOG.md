@@ -1,5 +1,40 @@
 # Changelog — confluence-docs
 
+## v0.9.0 (2026-05-12) — English skill, canonical spec, owner mentions
+
+This is a **breaking release** for projects whose tooling depended on pt-BR string output (template headers, km-generated content). The skill's user-facing strings are now in English, becoming usable by any startup globally. The frontmatter parser remains permissive — old pages with `tipo:`, `criado:`, etc. still work; only NEWLY-generated content (via `new`, `km generate`) uses English keys.
+
+### `reference/doc-types.md` — canonical English spec inside the skill
+
+Previously the skill referenced `docs/standards/EDITORIAL_v2.md` (a Lybel-specific pt-BR doc that doesn't exist in other projects). Moved the canonical spec **into the skill** as `reference/doc-types.md` (~2600 words, English, generic examples). Projects can still extend with their own editorial guide, but the 5 types, frontmatter fields, naming convention, and anti-patterns are the contract here.
+
+### Internationalization to English
+
+- `cmd_new.go` — templates emit English headers (`## TL;DR`, `## Context`, `## Identification`, `## Decision`, `## Alternatives considered`, `## Consequences`, `## Analysis`, `## Prerequisites`, `## Steps`, `## Verification`, `## Idea`, `## Why it might matter`, etc.) and English frontmatter keys (`type`, `status: draft`, `created`, `updated`, `related`).
+- `cmd_km.go` — KM rendered output in English: `Knowledge Map`, `Rules for AI`, `Required sequence`, `Anomalies and cases for human review`, type labels/descriptions, `Show all N pages`, `_No real anomalies flagged._`, etc. Lybel-specific framing ("Cenário I") replaced with generic phase-tag guidance ("use whatever your project uses — `mvp`, `v1`, `vision`").
+- `storage_convert.go` — `:::properties collapsed` wraps in expand titled `Metadata` (was `Metadados`).
+- `SKILL.md` — frontmatter example updated to English keys.
+
+JSON wire format fields (`tipo_proposto`, `anomalia`, `tags_sugeridas` in triage batches) remain unchanged — those are API contracts.
+
+### Owner / reviewer `@mention` resolution
+
+`:::properties` values containing `@handle` or bare email patterns are now resolved to real Confluence user mentions when uploaded (storage path). Resolution goes through `ConfluenceClient.LookupUser` → Atlassian `/wiki/rest/api/user/picker`. Resolved entries become `<ac:link><ri:user ri:account-id="..."/></ac:link>` (clickable user chips); unresolved fall back to plain text. Persistent cache at `$XDG_CACHE_HOME/confluence-docs/users.json` (24h TTL).
+
+New public symbols:
+- `adf.UserResolver` interface; `adf.NewClientUserResolver(client)`
+- `adf.MarkdownToStorageWithClient(src, client)` — mention-aware variant
+- `ConfluenceClient.LookupUser`, `LoadUserCache`, `SaveUserCache`
+
+`page create --markdown`, `page upload --markdown`, and `km generate` all use the mention-aware path automatically when a client is available.
+
+### Tests
+
+- `cli/adf/adf_builders_mention_test.go` — 11 mention-resolution tests (mock resolver, no live API).
+- `cli/cmd_km_test.go` — assertions updated for English strings.
+
+All existing tests still pass.
+
 ## v0.8.4 (2026-05-12) — fix RequiresStorageFormat for `:::properties collapsed`
 
 ### Bug fix

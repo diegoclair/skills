@@ -496,7 +496,7 @@ confluence-docs km generate \
 }
 ```
 
-Baseline entries take precedence over triage (tipo and title are never overridden). Triage can still **augment** baseline entries — e.g. adding `fase-final-checkout-universal` tag or a real anomaly.
+Baseline entries take precedence over triage (type and title are never overridden). Triage can still **augment** baseline entries — e.g. adding `fase-final-checkout-universal` tag or a real anomaly.
 
 ### Triage batch format (`batch-*.json` files)
 
@@ -550,13 +550,13 @@ In any markdown file, use the `:::properties` fenced block to generate the Confl
 
 ```markdown
 :::properties
-tipo: reference
-status: ativo
+type: reference
+status: active
 owner: d.clair@novapaytech.com
-tags: psp, cobranca, recorrencia
-relacionados: [[Análise Stripe Brasil]], [[id:12345]]
-criado: 2026-05-12
-atualizado: 2026-05-12
+tags: psp, billing, recurring
+related: [[Stripe Brazil Analysis]], [[id:12345]]
+created: 2026-05-12
+updated: 2026-05-12
 :::
 ```
 
@@ -622,7 +622,7 @@ confluence-docs new how-to --title "Como fazer deploy no Railway"
 confluence-docs new capture --title "Spike AbacatePay webhooks 2026-05-12"
 ```
 
-Owner is read from `git config user.email`. Template includes `status: rascunho`, today's date for `criado`/`atualizado`, and structured headings appropriate to the doc type.
+Owner is read from `git config user.email`. Template includes `status: draft`, today's date for `created`/`updated`, and structured headings appropriate to the doc type.
 
 For `decision` type, the template also includes: Alternatives Considered (table), Consequences, and Review date.
 

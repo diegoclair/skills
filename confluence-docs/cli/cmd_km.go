@@ -451,11 +451,11 @@ type tipoMeta struct {
 var tipoOrder = []string{"reference", "decision", "explanation", "how-to", "capture"}
 
 var tipoMetas = map[string]tipoMeta{
-	"reference":   {"📚 reference", "Entidades estáveis: concorrentes, parceiros, advisors, ferramentas, ICPs, features."},
-	"decision":    {"⚖️ decision", "Escolhas registradas: ADRs, pivots, princípios, modelos."},
-	"explanation": {"🔍 explanation", "Análises e contexto: pesquisas, growth, cases, estudos comparativos."},
-	"how-to":      {"🛠️ how-to", "Processos operacionais passo-a-passo."},
-	"capture":     {"💡 capture", "Ideias e hipóteses em validação."},
+	"reference":   {"📚 reference", "Stable entities: competitors, partners, advisors, tools, ICPs, features."},
+	"decision":    {"⚖️ decision", "Recorded choices: ADRs, pivots, principles, models."},
+	"explanation": {"🔍 explanation", "Analysis and context: research, growth, cases, comparative studies."},
+	"how-to":      {"🛠️ how-to", "Step-by-step operational processes."},
+	"capture":     {"💡 capture", "Ideas and hypotheses under validation."},
 }
 
 // renderKMMD produces the full markdown body for the KNOWLEDGE_MAP page.
@@ -497,97 +497,97 @@ func renderKMMD(pages map[string]kmPage) string {
 
 	// Properties frontmatter.
 	// `collapsed` wraps the details macro in an expand — the metadata table is
-	// big and noisy at the top of a 122-page index. Click to see.
+	// big and noisy at the top of the index. Click to see.
 	wl(":::properties collapsed")
-	wl("tipo: reference")
-	wl("status: ativo")
-	wl("owner: @diegoclair")
-	wl("tags: meta-doc, ai-first, tipo-index, knowledge-management")
-	wl("relacionados: [[Home]], docs/standards/EDITORIAL_v2.md")
-	wl("criado: " + today)
-	wl("atualizado: " + today)
+	wl("type: reference")
+	wl("status: active")
+	wl("owner: @owner")
+	wl("tags: meta-doc, ai-first, index, knowledge-management")
+	wl("related: [[Home]], reference/doc-types.md")
+	wl("created: " + today)
+	wl("updated: " + today)
 	wl(":::")
 	wl("")
 
 	// TL;DR.
 	wl("## TL;DR")
 	wl("")
-	wl("- Mapa cross-topic do conhecimento Lybel organizado por **tipo de doc** (não por área). Agentes IA leem antes de criar página nova.")
+	wl("- Cross-cutting Knowledge Map organized by **doc type** (not by area). AI agents read this before creating a new page.")
 	wl(fmt.Sprintf(
-		"- %d páginas classificadas em 5 tipos: `reference` (%d), `explanation` (%d), `capture` (%d), `decision` (%d), `how-to` (%d).",
+		"- %d pages classified in 5 types: `reference` (%d), `explanation` (%d), `capture` (%d), `decision` (%d), `how-to` (%d).",
 		totalAll, totals["reference"], totals["explanation"], totals["capture"], totals["decision"], totals["how-to"],
 	))
-	wl("- Tag `fase-mvp` = páginas do Cenário I (caminho/MVP atual). Tag `fase-final-checkout-universal` = páginas do produto-fim (B2B2C, visão de longo prazo) — **preservadas como contexto fundacional, NÃO obsoletas**.")
+	wl("- Optional phase tags signal which roadmap horizon a page belongs to. The skill does not opinion on naming — use whatever your project uses (e.g. `mvp`, `v1`, `vision`, etc).")
 	wl(fmt.Sprintf(
-		"- Hoje **%d páginas** carregam tag `fase-final-checkout-universal`. Sem juízo de valor — só filtro pra você encontrar quando quiser revisitar a visão.",
+		"- Today **%d pages** carry tag `fase-final-checkout-universal`. No value judgment — just a filter to find them when you want to revisit the vision.",
 		faseFinalCount,
 	))
-	wl("- Para navegação por área temática (Estratégia/Produto/Research), use a [Home](https://lybel.atlassian.net/wiki/spaces/lybel/overview). Os dois mapas são complementares.")
+	wl("- For navigation by topic area, use the [Home](https://lybel.atlassian.net/wiki/spaces/lybel/overview). The two maps are complementary.")
 	wl("")
 
-	// Por que este mapa existe.
-	wl("## Por que este mapa existe")
+	// Why this map exists.
+	wl("## Why this map exists")
 	wl("")
-	wl("A Home organiza por **área temática** (9 categorias). O KNOWLEDGE_MAP organiza por **tipo de doc** — eixo cross-cutting que IA usa pra decidir tom, estrutura e regras de imutabilidade.")
+	wl("The Home organizes by **topic area**. The KNOWLEDGE_MAP organizes by **doc type** — a cross-cutting axis that AI uses to decide tone, structure, and immutability rules.")
 	wl("")
-	wl("Spec canônica completa dos 5 tipos: `docs/standards/EDITORIAL_v2.md` no Git.")
+	wl("Full canonical spec for the 5 types: `reference/doc-types.md` in the skill.")
 	wl("")
 
-	// Os 5 tipos table.
-	wl("## Os 5 tipos")
+	// The 5 types table.
+	wl("## The 5 types")
 	wl("")
-	wl("| Tipo | O que é | Onde vive | Imutável? |")
+	wl("| type | What it is | Where it lives | Immutable? |")
 	wl("|---|---|---|---|")
-	wl("| `reference` | Fato estável sobre entidade externa/interna | Confluence | Não |")
-	wl("| `decision` | Escolha registrada com contexto e consequências | Git `/docs/specs/` preferencial | **Sim** após `accepted` |")
-	wl("| `explanation` | Análise, contexto estratégico, pesquisa | Confluence | Não |")
-	wl("| `how-to` | Processo operacional passo-a-passo | Confluence | Não |")
-	wl("| `capture` | Ideia bruta, hipótese em validação | Confluence | Não — migra quando madura |")
+	wl("| `reference` | Stable fact about an external/internal entity | Confluence | No |")
+	wl("| `decision` | Recorded choice with context and consequences | Git `/docs/specs/` preferred | **Yes** after `accepted` |")
+	wl("| `explanation` | Analysis, strategic context, research | Confluence | No |")
+	wl("| `how-to` | Step-by-step operational process | Confluence | No |")
+	wl("| `capture` | Raw idea, hypothesis under validation | Confluence | No — migrates when mature |")
 	wl("")
 	wl("---")
 	wl("")
 
-	// Regras pra IA — H2 PRÓPRIO antes das seções de tipo, pra digest enxergar.
-	wl("## Regras pra IA (LEIA ANTES DE CRIAR PÁGINA NOVA)")
+	// Rules for AI — own H2 before type sections, so digest can surface it.
+	wl("## Rules for AI (READ BEFORE CREATING A NEW PAGE)")
 	wl("")
-	wl(":::info Sequência obrigatória")
+	wl(":::info Required sequence")
 	wl("")
-	wl("1. **INDEX-FIRST**: rode `confluence-docs check --title \"...\" --type <tipo>` antes de criar. Se já existe similar (score ≥ 0.4 default), atualize-a.")
-	wl("2. **Fallback semântico**: se `check` retornar vazio, rode `confluence-docs search \"<termo curto>\"` antes de criar — trigrama pega só similaridade lexical, search pega texto + título e cobre o gap.")
-	wl("3. **Use `confluence-docs new <tipo>`** pra gerar template padrão pros 5 tipos (frontmatter + estrutura).")
-	wl("4. **Registre aqui no mesmo turno**: toda página nova entra na seção do tipo correspondente neste mapa, no mesmo turno em que é criada.")
-	wl("5. **Inserção no KM**: use `confluence-docs page apply --insert-after \"## 📚 reference\"` (ou tipo correspondente). O bullet segue formato: `- [Title](URL) (pageId) — tags: \\`t1\\`, \\`t2\\``.")
-	wl("6. **Slug** segue padrão `{tipo}-{entidade}-{contexto}` (kebab-case, sem acento).")
-	wl("7. **Frontmatter** via `:::properties` é obrigatório (Page Properties macro real desde v0.8.0).")
-	wl("8. **TL;DR ≤ 5 bullets** obrigatório se página > 300 palavras.")
-	wl("9. **Headers descritivos**: `## Contexto: <qualificador>`, nunca só `## Contexto`.")
-	wl("10. **Decisões superseded**: ao criar nova decision com `supersedes: <id-antigo>`, ATUALIZE o doc antigo: `status: superseded`, adicione `superseded-by: <id-novo>`. Nunca apaga.")
-	wl("11. **Tag de horizonte é opcional mas recomendada**: `fase-mvp` (Cenário I, MVP atual) ou `fase-final-checkout-universal` (produto-fim, visão de longo prazo). Sem juízo de valor — só filtro.")
-	wl("12. **Tag de fase ausente é válida**: páginas cross-cutting (índices, frameworks, marca) podem ficar sem tag de horizonte.")
-	wl("13. **Spec canônica completa**: `docs/standards/EDITORIAL_v2.md` no Git.")
+	wl("1. **INDEX-FIRST**: run `confluence-docs check --title \"...\" --type <type>` before creating. If a similar page exists (score ≥ 0.4 default), update it instead.")
+	wl("2. **Semantic fallback**: if `check` returns empty, run `confluence-docs search \"<short term>\"` before creating — trigram catches only lexical similarity; search covers text + title and fills the gap.")
+	wl("3. **Use `confluence-docs new <type>`** to generate the standard template for the 5 types (frontmatter + structure).")
+	wl("4. **Register here in the same turn**: every new page goes into the corresponding type section in this map, in the same turn it is created.")
+	wl("5. **Insertion in KM**: use `confluence-docs page apply --insert-after \"## 📚 reference\"` (or corresponding type). Bullet format: `- [Title](URL) (pageId) — tags: \\`t1\\`, \\`t2\\``.")
+	wl("6. **Slug** follows pattern `{type}-{entity}-{context}` (kebab-case, no accents).")
+	wl("7. **Frontmatter** via `:::properties` is required (real Page Properties macro since v0.8.0).")
+	wl("8. **TL;DR ≤ 5 bullets** required if page > 300 words.")
+	wl("9. **Descriptive headers**: `## Context: <qualifier>`, never just `## Context`.")
+	wl("10. **Superseded decisions**: when creating a new decision with `supersedes: <old-id>`, UPDATE the old doc: `status: superseded`, add `superseded-by: <new-id>`. Never delete.")
+	wl("11. **Phase tag is optional but recommended**: use whatever phase tags your project defines (e.g. `fase-mvp`, `v1`, `vision`). No value judgment — just a filter.")
+	wl("12. **Missing phase tag is valid**: cross-cutting pages (indexes, frameworks, brand) can have no phase tag.")
+	wl("13. **Full canonical spec**: `reference/doc-types.md` in the skill.")
 	wl("")
 	wl(":::")
 	wl("")
 	wl("---")
 	wl("")
 
-	// Sections per tipo. Headings WITHOUT counts — `page apply --insert-after "## 📚 reference"` deve ser estável.
+	// Sections per tipo. Headings WITHOUT counts — `page apply --insert-after "## 📚 reference"` must be stable.
 	for _, tipo := range tipoOrder {
 		meta := tipoMetas[tipo]
 		items := byTipo[tipo]
 		wl(fmt.Sprintf("## %s", meta.label))
 		wl("")
-		wl(fmt.Sprintf("_%d páginas — %s_", len(items), meta.desc))
+		wl(fmt.Sprintf("_%d pages — %s_", len(items), meta.desc))
 		wl("")
 		if len(items) == 0 {
-			wl("_Nenhuma página classificada._")
+			wl("_No pages classified._")
 			wl("")
 			wl("---")
 			wl("")
 			continue
 		}
 		if len(items) > 12 {
-			wl(fmt.Sprintf(":::expand Ver as %d páginas", len(items)))
+			wl(fmt.Sprintf(":::expand Show all %d pages", len(items)))
 			for _, p := range items {
 				wl(renderKMPageLine(p))
 			}
@@ -602,10 +602,10 @@ func renderKMMD(pages map[string]kmPage) string {
 		wl("")
 	}
 
-	// Anomalias section.
-	wl("## Anomalias e casos pra revisão humana")
+	// Anomalies section.
+	wl("## Anomalies and cases for human review")
 	wl("")
-	wl("Só anomalias **reais** entram aqui: fronteira ambígua entre tipos (`borderline-tipo`), suspeita de duplicata, nome desatualizado. **Tag `fase-final-checkout-universal` NÃO é anomalia** — é só horizonte.")
+	wl("Only real anomalies here: ambiguous boundary between types (`borderline-tipo`), suspected duplicate, outdated name. **Tag `fase-final-checkout-universal` is NOT an anomaly** — it is just a horizon marker.")
 	wl("")
 	var anomalias []kmPage
 	for _, p := range pages {
@@ -617,7 +617,7 @@ func renderKMMD(pages map[string]kmPage) string {
 		return strings.ToLower(anomalias[i].Title) < strings.ToLower(anomalias[j].Title)
 	})
 	if len(anomalias) > 0 {
-		wl(fmt.Sprintf(":::expand %d páginas com anomalia real pra revisão", len(anomalias)))
+		wl(fmt.Sprintf(":::expand %d pages with real anomaly for review", len(anomalias)))
 		for _, p := range anomalias {
 			a := p.RealAnomaly
 			if len(a) > 90 {
@@ -630,28 +630,28 @@ func renderKMMD(pages map[string]kmPage) string {
 					a = a[:90] + "…"
 				}
 			}
-			wl(fmt.Sprintf("- [%s](%s%s) `(%s)` — tipo: `%s`", p.Title, kmURLBase, p.ID, p.ID, p.Tipo))
+			wl(fmt.Sprintf("- [%s](%s%s) `(%s)` — type: `%s`", p.Title, kmURLBase, p.ID, p.ID, p.Tipo))
 			wl(fmt.Sprintf("  - %s", a))
 		}
 		wl(":::")
 	} else {
-		wl("_Nenhuma anomalia real flagada._")
+		wl("_No real anomalies flagged._")
 	}
 	wl("")
 
-	// Ver também.
-	wl("## Ver também")
+	// See also.
+	wl("## See also")
 	wl("")
-	wl("- [Home — Navegação por área temática](https://lybel.atlassian.net/wiki/spaces/lybel/overview)")
-	wl("- `docs/standards/EDITORIAL_v2.md` (Git) — spec canônica completa dos 5 tipos, frontmatter, anti-padrões")
+	wl("- [Home — Navigation by topic area](https://lybel.atlassian.net/wiki/spaces/lybel/overview)")
+	wl("- `reference/doc-types.md` (skill) — full canonical spec for the 5 types, frontmatter, anti-patterns")
 	wl("")
 
-	// Manutenção.
-	wl("## Manutenção")
+	// Maintenance.
+	wl("## Maintenance")
 	wl("")
-	wl("- Toda página nova é adicionada à seção do tipo correspondente no mesmo turno em que é criada.")
-	wl("- Reclassificações (`capture` → `explanation`, etc) também atualizam aqui.")
-	wl(fmt.Sprintf("- A classificação atual cobre as %d páginas do espaço (%s). Páginas adicionais entram à medida que são criadas.", totalAll, today))
+	wl("- Every new page is added to the corresponding type section in the same turn it is created.")
+	wl("- Reclassifications (`capture` → `explanation`, etc) also update here.")
+	wl(fmt.Sprintf("- The current classification covers the %d pages in the space (%s). Additional pages are added as they are created.", totalAll, today))
 
 	return sb.String()
 }
@@ -697,7 +697,9 @@ func renderKMPageLine(p kmPage) string {
 // the title, not only as table cell text).
 func uploadKM(client *adf.ConfluenceClient, pageID, md string, fullWidth bool, message string, stderr io.Writer) error {
 	// KM markdown always contains :::properties and :::info — storage path.
-	storageBody, err := adf.MarkdownToStorage([]byte(md))
+	// Use client-aware conversion so @handle mentions in :::properties are
+	// resolved to real Confluence user mention links.
+	storageBody, err := adf.MarkdownToStorageWithClient([]byte(md), client)
 	if err != nil {
 		return fmt.Errorf("convert markdown to storage: %w", err)
 	}
