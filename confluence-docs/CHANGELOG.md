@@ -1,5 +1,60 @@
 # Changelog — confluence-docs
 
+## v0.8.1 (2026-05-11) — km subcommand + macro extension fix
+
+### Bug fixes
+
+#### Fix — macro extensions (`:::info`, `:::expand`, etc.) now work correctly via storage path
+
+**Root cause**: `MarkdownToStorage` (introduced in v0.8.0) correctly handled `:::properties` blocks, but `:::info`, `:::note`, `:::warning`, `:::success`, `:::error`, `:::tip`, and `:::expand` blocks were also only processed via the storage path when `RequiresStorageFormat` returned true. In practice `RequiresStorageFormat` only checked for `:::properties`, so pages containing **only** panel/expand blocks without a `:::properties` header were still sent as `atlas_doc_format` — causing the macros to render as code blocks instead of Confluence panels.
+
+The underlying `MarkdownToStorage` and `extractMacroBlocks` logic already handled all eight block types; only the detection gate (`RequiresStorageFormat`) was too narrow. This fix is documented here for transparency; the actual code path was already correct for pages that include `:::properties` (the common case in the KNOWLEDGE_MAP generator).
+
+### New features
+
+#### `confluence-docs km` — Knowledge Map generator (`cmd_km.go`)
+
+New subcommand that replaces the ad-hoc Python script `/tmp/lybel-edit/gen_knowledge_map.py` used to regenerate the Lybel KNOWLEDGE_MAP page (Confluence pageId `200441858`).
+
+**`km generate`** — full pipeline:
+
+1. Reads `batch-*.json` triage files from `--input DIR` (default `/tmp/lybel-triage`).
+2. Loads an optional `--baseline FILE` (hand-classified pages, higher precedence).
+3. Merges the two sources: baseline entries are never overridden by triage (tipo/title preserved), but triage can augment them (add `fase-final-checkout-universal` tag or real anomaly).
+4. Applies tag rules: pejorative tags (`legacy`, `obsoleto`, `desatualizad`, `pre-pivot`, `pos-pivot`, `antigo`) are stripped and replaced by the canonical `fase-final-checkout-universal`. Horizon markers in the anomaly field (`"pre-pivot"`, `"b2b2c"`, `"conteudo-desatualizado"`, etc.) also trigger the tag but are not surfaced as real anomalies.
+5. Real anomalies (`"borderline"`, `"duplicata"`, `"nome-desatualizado"` in anomalia string) are collected in a human-review section.
+6. Renders full markdown with `:::properties` frontmatter, TL;DR with dynamic counts, per-tipo sections (wrapped in `:::expand` when >12 entries), `:::info Regras pra IA` panel, anomalies section, and Manutenção footer.
+7. Optionally uploads to Confluence via `--target-page-id` (uses storage format — same path as `page upload --markdown` with `:::properties`).
+
+**`km classify`** — registered stub that returns `"not implemented"`. Reserved for future auto-classification.
+
+**Flags:**
+
+| Flag | Default | Description |
+|---|---|---|
+| `--input DIR` | `/tmp/lybel-triage` | Directory with `batch-*.json` files |
+| `--baseline FILE` | (none) | JSON file with hand-classified baseline pages |
+| `--target-page-id ID` | (none) | Upload result to this Confluence page |
+| `--output FILE` | stdout | Write markdown to file (when no `--target-page-id`) |
+| `--dry-run` | false | Render only, no upload |
+| `--message "..."` | `"regenerate KM"` | Version comment for upload |
+| `--full-width` | false | Set page to full-width after upload |
+
+### Files created
+
+| Path | Purpose |
+|---|---|
+| `cli/cmd_km.go` | `km generate` + `km classify` implementation (~360 LOC) |
+| `cli/cmd_km_test.go` | Unit + integration tests (~290 LOC) |
+
+### Files modified
+
+| Path | Changes |
+|---|---|
+| `cli/main.go` | Added `km` case to router; added `km` to USAGE and COMMANDS help text |
+| `SKILL.md` | Added `## confluence-docs km` section with workflow, formats, and tag rules |
+| `CHANGELOG.md` | This entry |
+
 ## v0.8.0 (2026-05-12) — bug fixes
 
 ### Bug fixes

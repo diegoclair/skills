@@ -96,3 +96,48 @@ func TestMarkdownToStorage_emptyPropertiesBlockSkipped(t *testing.T) {
 		t.Errorf("heading should still be present:\n%s", out)
 	}
 }
+
+func TestMarkdownToStorage_infoPanel(t *testing.T) {
+	src := ":::properties\ntipo: reference\n:::\n\n:::info\nRegras pra IA aqui.\n:::\n"
+	out, err := MarkdownToStorage([]byte(src))
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+	if !strings.Contains(out, `ac:name="info"`) {
+		t.Errorf("missing info macro:\n%s", out)
+	}
+	if strings.Contains(out, ":::info") {
+		t.Errorf("literal :::info leaked into output:\n%s", out)
+	}
+}
+
+func TestMarkdownToStorage_expandWithTitle(t *testing.T) {
+	src := ":::properties\ntipo: index\n:::\n\n:::expand Ver as 50 páginas\n- item 1\n- item 2\n:::\n"
+	out, err := MarkdownToStorage([]byte(src))
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+	if !strings.Contains(out, `ac:name="expand"`) {
+		t.Errorf("missing expand macro:\n%s", out)
+	}
+	if !strings.Contains(out, `<ac:parameter ac:name="title">Ver as 50 páginas</ac:parameter>`) {
+		t.Errorf("expand title not preserved:\n%s", out)
+	}
+	if !strings.Contains(out, "<li>item 1</li>") {
+		t.Errorf("expand body not rendered:\n%s", out)
+	}
+}
+
+func TestMarkdownToStorage_allPanelTypes(t *testing.T) {
+	src := ":::properties\ntipo: reference\n:::\n\n:::warning\nWarn body.\n:::\n\n:::note\nNote body.\n:::\n"
+	out, err := MarkdownToStorage([]byte(src))
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+	if !strings.Contains(out, `ac:name="warning"`) {
+		t.Errorf("missing warning macro:\n%s", out)
+	}
+	if !strings.Contains(out, `ac:name="note"`) {
+		t.Errorf("missing note macro:\n%s", out)
+	}
+}

@@ -41,6 +41,7 @@ USAGE:
   confluence-docs index        VERB [flags]
   confluence-docs check        --title "..." [--type TYPE] [--tags t1,t2] [--threshold 0.7]
   confluence-docs new          TYPE --title "..." [--parent-id ID] [--full-width] [--output FILE]
+  confluence-docs km           SUBCMD [flags]
   confluence-docs --version
   confluence-docs --help
 
@@ -57,6 +58,7 @@ COMMANDS:
   index         Manage the Page ID Index table on the Home page.
   check         Fuzzy title search before creating a page. Returns JSON with exists/similar/suggestion.
   new           Generate a markdown template for a new page by doc type (reference/decision/explanation/how-to/capture).
+  km            Knowledge Map: generate and upload the Lybel KNOWLEDGE_MAP page (subcommands: generate, classify).
 
 SETUP FLAGS:
   (no flags)              Interactive wizard — prompts for email and API token.
@@ -321,6 +323,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) (int, error) 
 		return runCheck(args[1:], stdout, stderr)
 	case "new":
 		return runNew(args[1:], stdin, stdout, stderr)
+	case "km":
+		return runKM(args[1:], stdin, stdout, stderr)
 	}
 
 	fmt.Fprintln(stderr, "unknown command:", args[0])

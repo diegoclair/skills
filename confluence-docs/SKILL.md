@@ -452,6 +452,78 @@ confluence-docs page create \
 
 The `check` command uses trigram-based fuzzy matching (Jaccard similarity, threshold 0.7 by default). It also accepts `--tags` to filter by Confluence labels and `--threshold` to tighten or loosen the match.
 
+## `confluence-docs km` — Knowledge Map generator
+
+Generates the Lybel KNOWLEDGE_MAP page (Confluence pageId `200441858`) from triage JSON batches produced by subagents, with optional hand-classified baseline overrides.
+
+### Typical agent workflow
+
+```
+# 1. Subagent triagem writes batch-*.json into /tmp/lybel-triage/
+# 2. Consolidate and upload:
+confluence-docs km generate \
+    --input /tmp/lybel-triage \
+    --baseline /tmp/baseline.json \
+    --target-page-id 200441858 \
+    --message "regenerate KM after triage" \
+    --full-width
+```
+
+### Dry-run (review before upload)
+
+```bash
+# Render to stdout only:
+confluence-docs km generate --input /tmp/lybel-triage
+
+# Render to file:
+confluence-docs km generate --input /tmp/lybel-triage --output /tmp/km.md
+
+# Dry-run with target page: shows size but skips upload:
+confluence-docs km generate \
+    --input /tmp/lybel-triage \
+    --target-page-id 200441858 \
+    --dry-run
+```
+
+### Baseline format (`--baseline FILE`)
+
+```json
+{
+  "pages": [
+    {"pageId": "185303042", "title": "Sobre a Lybel", "tipo": "reference", "tags": []},
+    {"pageId": "187695141", "title": "Proposta fit HOJE", "tipo": "decision", "tags": ["fase-mvp"]}
+  ]
+}
+```
+
+Baseline entries take precedence over triage (tipo and title are never overridden). Triage can still **augment** baseline entries — e.g. adding `fase-final-checkout-universal` tag or a real anomaly.
+
+### Triage batch format (`batch-*.json` files)
+
+```json
+[
+  {
+    "pageId": "131676",
+    "title": "Business Model Canvas",
+    "tipo_proposto": "reference",
+    "confidence": "high",
+    "tags_sugeridas": ["bmc", "estrategia"],
+    "rationale": "...",
+    "anomalia": null
+  }
+]
+```
+
+### Tag rules applied automatically
+
+- Tags with pejorative substrings (`legacy`, `obsoleto`, `desatualizad`, `pre-pivot`, `pos-pivot`, `antigo`) are removed and replaced by the canonical `fase-final-checkout-universal`.
+- Anomaly strings containing `"pre-pivot"`, `"b2b2c"`, `"pos-pivot"`, `"conteudo-desatualizado"`, etc. mark the entry with `fase-final-checkout-universal` but do NOT become real anomalies.
+- Real anomalies (shown in the review section) require: `"borderline"`, `"duplicata"`, or `"nome-desatualizado"` substrings.
+
+### `km classify` (stub)
+
+`confluence-docs km classify --page-id ID` is registered but returns `"not implemented"`. Reserved for future auto-classification via the Confluence REST API.
+
 ## New features (v0.4+)
 
 ### Full-width pages
