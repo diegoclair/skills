@@ -4,15 +4,15 @@
 [![Latest Release](https://img.shields.io/github/v/release/lybel-app/skills?color=11C47E&label=release)](https://github.com/lybel-app/skills/releases/latest)
 [![Claude Skills](https://img.shields.io/badge/Claude-Skills-11C47E)](https://docs.claude.com/en/docs/claude-code/skills)
 
-> Skills do Claude para o time da **Lybel**. Pergunte em português; o Claude vai direto no Confluence, Jira e afins.
+> Skills open-source do Claude mantidas pelo time da **Lybel**. Funcionam pra qualquer empresa — basta apontar pro seu Confluence/Jira/etc. PRs bem-vindos.
 
 ## Skills disponíveis
 
 | Skill | Resumo | Docs |
 |---|---|---|
-| **`confluence-docs`** | Busca, cria e atualiza páginas do Confluence Lybel em linguagem natural. Usa CLI Go local que devolve digests/sections em vez do ADF inteiro — 10–50× mais barato em tokens que o MCP puro (que fica como fallback). | [SKILL.md](./confluence-docs/SKILL.md) |
+| **`confluence-docs`** | Busca, cria e atualiza páginas do Confluence em linguagem natural. Usa CLI Go local que devolve digests/sections em vez do ADF inteiro — 10–50× mais barato em tokens que o MCP puro (que fica como fallback). | [SKILL.md](./confluence-docs/SKILL.md) |
 
-Próximas candidatas: `lybel-jira`, `lybel-figma`, `lybel-analytics`.
+Próximas candidatas: `jira-tickets`, `figma-files`, `analytics`.
 
 ---
 
@@ -20,7 +20,7 @@ Próximas candidatas: `lybel-jira`, `lybel-figma`, `lybel-analytics`.
 
 Skills aqui são **timeless**: o repo só guarda estrutura, workflows e templates — nenhum dado da Lybel (advisors, investidores, page IDs específicos). Em runtime, o Claude consulta a Home do Confluence (pageId `164232`), que é a fonte da verdade da taxonomia e do índice. Por isso o repo é safe pra ficar público.
 
-**Pra adaptar pra outra empresa:** troque `cloudId` e o pageId da Home no frontmatter de [`SKILL.md`](./confluence-docs/SKILL.md), e crie a Home no seu Confluence seguindo o mesmo padrão.
+**Pra adaptar pra outra empresa:** troque `cloudId` e o pageId da Home no frontmatter de [`SKILL.md`](./confluence-docs/SKILL.md), e crie a Home no seu Confluence seguindo o mesmo padrão. Veja a seção [Contribuindo](#contribuindo) pra entender por que nenhum dado de empresa específica vive aqui.
 
 ### Por que CLI em vez de só MCP
 
@@ -100,6 +100,17 @@ lybel-skills/
 ```
 
 Cada skill é self-contained. Sem CLI? Pula `cli/` e `install/` — `SKILL.md` + `reference/` é o mínimo. Release assets são gerados pelo CI, nunca commitados.
+
+## Contribuindo
+
+Este repo é open-source e as skills aqui têm que funcionar pra qualquer empresa que clonar. Regras pra PR:
+
+- **Skills devem ser company-agnostic.** Nenhum dado específico da Lybel (ou de qualquer empresa) hardcoded no corpo da skill, em `reference/`, ou no código do CLI. Sem nomes de pessoas, advisors, investidores, parceiros, page IDs específicos, URLs de instâncias, listas de produtos, etc.
+- **Defaults configuráveis.** Se a skill precisa de um valor pra funcionar (cloudId, pageId raiz, domínio Atlassian), expõe via frontmatter ou variável de ambiente. O default pode apontar pra Lybel — mas tem que estar documentado como trocar.
+- **Padrão "Home page como fonte da verdade".** Pra dados que mudam (taxonomia, índice, lista de itens), a skill deve **consultar o sistema externo em runtime** (Confluence, Jira, etc.), não cachear no repo. É isso que mantém o repo timeless e safe pra deixar público.
+- **Exceções OK:** o README, CHANGELOG, e commits podem mencionar Lybel à vontade — é a empresa mantenedora. Só o conteúdo das skills é que precisa ser genérico.
+
+Antes de abrir PR, grep no diff: `git diff main | grep -iE 'lybel|d\.clair|11C47E|164232'`. Se aparecer fora de README/CHANGELOG/configs default documentados, refatora.
 
 ### Adicionar skill nova
 
