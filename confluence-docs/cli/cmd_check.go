@@ -157,7 +157,14 @@ func runCheck(args []string, stdout, stderr io.Writer) (int, error) {
 		return exitInputErr, errInvalidUsage
 	}
 	if space == "" {
-		space = defaultCloud
+		if key, keyErr := currentSpaceKey(); keyErr == nil {
+			space = key
+		}
+	}
+	if space == "" {
+		fmt.Fprintln(stderr, "check: no space specified and no active space configured")
+		fmt.Fprintln(stderr, "  use --space <key> or run `confluence-docs setup` / `space use <key>`")
+		return exitInputErr, errInvalidUsage
 	}
 
 	client, ok := buildClient(cloud, email, token, stderr)

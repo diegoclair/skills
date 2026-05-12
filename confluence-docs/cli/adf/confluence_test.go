@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -76,21 +77,54 @@ func TestResolveCreds_NoneFound(t *testing.T) {
 }
 
 func TestResolveCloud(t *testing.T) {
+	// Override flag wins over everything.
 	if got := ResolveCloud("mycloud"); got != "mycloud" {
-		t.Errorf("want 'mycloud', got %q", got)
+		t.Errorf("override: want 'mycloud', got %q", got)
 	}
 
+	// Env var wins over file.
 	t.Setenv("ATLASSIAN_CLOUD", "envcloud")
 	if got := ResolveCloud(""); got != "envcloud" {
-		t.Errorf("want 'envcloud', got %q", got)
+		t.Errorf("env: want 'envcloud', got %q", got)
+	}
+	t.Setenv("ATLASSIAN_CLOUD", "")
+
+	// Config file (new location) is read when no env/override.
+	dir := t.TempDir()
+	switch runtime.GOOS {
+	case "windows":
+		t.Setenv("APPDATA", dir)
+	case "darwin":
+		t.Setenv("HOME", dir)
+	default:
+		t.Setenv("XDG_CONFIG_HOME", dir)
+		t.Setenv("HOME", dir)
+	}
+	cfgDir := filepath.Join(dir, "confluence-docs")
+	if err := os.MkdirAll(cfgDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cfgDir, "config"), []byte("cloud=filecloud\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if got := ResolveCloud(""); got != "filecloud" {
+		t.Errorf("config file: want 'filecloud', got %q", got)
 	}
 
-	t.Setenv("ATLASSIAN_CLOUD", "")
-	// With no env, no override, and no creds file containing `cloud=` we now
-	// return "" — there is no hardcoded default. Callers must surface a clear
-	// error to the user (handled in setup / main / ResolveCreds path).
+	// With no env, no override, and no config file: return "".
+	if err := os.Remove(filepath.Join(cfgDir, "config")); err != nil {
+		t.Fatal(err)
+	}
 	if got := ResolveCloud(""); got != "" {
-		t.Errorf("want empty (no env, no creds file), got %q", got)
+		t.Errorf("want empty (no env, no file), got %q", got)
+	}
+
+	// Backward compat: cloud= in old credentials file should still work.
+	if err := os.WriteFile(filepath.Join(cfgDir, "credentials"), []byte("email=u@e.com\ntoken=tok\ncloud=legacycloud\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if got := ResolveCloud(""); got != "legacycloud" {
+		t.Errorf("backward compat: want 'legacycloud', got %q", got)
 	}
 }
 

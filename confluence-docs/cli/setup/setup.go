@@ -41,6 +41,23 @@ type httpClient interface {
 // defaultHTTPClient is the real HTTP client used in production.
 var defaultHTTPClient httpClient = http.DefaultClient
 
+// Config holds the non-sensitive workspace configuration.
+type Config struct {
+	Cloud         string
+	SpaceID       string
+	SpaceKey      string
+	SpaceName     string
+	HomePageID    string
+}
+
+// SpaceInfo is a single Confluence space from the list-spaces API.
+type SpaceInfo struct {
+	ID         string
+	Key        string
+	Name       string
+	HomepageID string
+}
+
 // ConfigPath returns the platform-appropriate path to the credentials file.
 //
 //   - Linux:   $XDG_CONFIG_HOME/confluence-docs/credentials  (falls back to ~/.config/…)
@@ -52,6 +69,16 @@ func ConfigPath() (string, error) {
 		return "", fmt.Errorf("cannot determine config directory: %w", err)
 	}
 	return filepath.Join(dir, "confluence-docs", "credentials"), nil
+}
+
+// ConfigFilePath returns the platform-appropriate path to the non-sensitive
+// config file (cloud, active_space_*, active_home_page_id).
+func ConfigFilePath() (string, error) {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return "", fmt.Errorf("cannot determine config directory: %w", err)
+	}
+	return filepath.Join(dir, "confluence-docs", "config"), nil
 }
 
 // legacyConfigPath returns the old hardcoded path used before the
@@ -69,9 +96,7 @@ func legacyConfigPath() (string, error) {
 // file and prints a warning to stderr suggesting migration.
 //
 // Returns (email, token, error). An os.IsNotExist error means no file found.
-// The cloud field is read separately via ReadCloudFromCreds — kept distinct
-// for backward compatibility with older credential files that only had
-// email/token.
+// Cloud is no longer returned here — it's read from ReadConfigFile.
 func ReadCredsFile(stderr io.Writer) (email, token string, err error) {
 	newPath, pathErr := ConfigPath()
 	if pathErr != nil {
@@ -101,7 +126,8 @@ func ReadCredsFile(stderr io.Writer) (email, token string, err error) {
 	return parseCredsData(data)
 }
 
-// parseCredsData parses a key=value credential file.
+// parseCredsData parses a key=value credential file, returning only email and
+// token (cloud is no longer part of the credentials file in v0.10.0+).
 func parseCredsData(data []byte) (email, token string, err error) {
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSpace(line)
@@ -124,9 +150,94 @@ func parseCredsData(data []byte) (email, token string, err error) {
 	return email, token, nil
 }
 
-// ReadCloudFromCreds returns the cloud subdomain stored in the credentials
-// file, or "" if not present. Errors reading the file return "".
-func ReadCloudFromCreds() string {
+// ReadConfigFile reads the non-sensitive config file and returns a Config
+// struct. Falls back to reading cloud= from the old credentials file for
+// backward compatibility with v0.9.x installs.
+// Returns a zero-value Config (not an error) when the file doesn't exist yet.
+func ReadConfigFile() Config {
+	var cfg Config
+
+	// Try the new config file first.
+	path, err := ConfigFilePath()
+	if err == nil {
+		if data, rerr := os.ReadFile(path); rerr == nil {
+			cfg = parseConfigData(data)
+			if cfg.Cloud != "" {
+				return cfg
+			}
+		}
+	}
+
+	// Backward compat: read cloud= from the old credentials file.
+	cfg.Cloud = readCloudFromOldCreds()
+	return cfg
+}
+
+// parseConfigData parses a key=value config file into a Config struct.
+func parseConfigData(data []byte) Config {
+	var cfg Config
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		kv := strings.SplitN(line, "=", 2)
+		if len(kv) != 2 {
+			continue
+		}
+		key := strings.TrimSpace(kv[0])
+		val := strings.TrimSpace(kv[1])
+		switch key {
+		case "cloud":
+			cfg.Cloud = val
+		case "active_space_id":
+			cfg.SpaceID = val
+		case "active_space_key":
+			cfg.SpaceKey = val
+		case "active_space_name":
+			cfg.SpaceName = val
+		case "active_home_page_id":
+			cfg.HomePageID = val
+		}
+	}
+	return cfg
+}
+
+// WriteConfig writes the config file with the given Config. Creates parent
+// directories if needed. Permissions: 0644 (non-sensitive data).
+func WriteConfig(cfg Config) error {
+	path, err := ConfigFilePath()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return fmt.Errorf("create config dir: %w", err)
+	}
+	var sb strings.Builder
+	if cfg.Cloud != "" {
+		fmt.Fprintf(&sb, "cloud=%s\n", cfg.Cloud)
+	}
+	if cfg.SpaceID != "" {
+		fmt.Fprintf(&sb, "active_space_id=%s\n", cfg.SpaceID)
+	}
+	if cfg.SpaceKey != "" {
+		fmt.Fprintf(&sb, "active_space_key=%s\n", cfg.SpaceKey)
+	}
+	if cfg.SpaceName != "" {
+		fmt.Fprintf(&sb, "active_space_name=%s\n", cfg.SpaceName)
+	}
+	if cfg.HomePageID != "" {
+		fmt.Fprintf(&sb, "active_home_page_id=%s\n", cfg.HomePageID)
+	}
+	if err := os.WriteFile(path, []byte(sb.String()), 0644); err != nil {
+		return fmt.Errorf("write config: %w", err)
+	}
+	return nil
+}
+
+// readCloudFromOldCreds reads the cloud= line from the old credentials file
+// (v0.9.x single-file format). Used as backward-compat fallback only.
+func readCloudFromOldCreds() string {
 	path, err := ConfigPath()
 	if err != nil {
 		return ""
@@ -159,9 +270,18 @@ func ReadCloudFromCreds() string {
 	return ""
 }
 
-// WriteCreds writes email, token and cloud subdomain to the config file with
-// secure permissions. Creates parent directories if needed. If cloud is "",
-// the cloud line is omitted (preserves backward compat).
+// ReadCloudFromCreds returns the cloud subdomain from either the config file
+// (v0.10.0+) or the old single credentials file (v0.9.x backward compat).
+// Kept for compatibility; new code should use ReadConfigFile().Cloud.
+func ReadCloudFromCreds() string {
+	cfg := ReadConfigFile()
+	return cfg.Cloud
+}
+
+// WriteCreds writes email and token to the credentials file with secure
+// permissions (0600). Creates parent directories if needed.
+// The variadic cloud arg is accepted but ignored (cloud now goes to WriteConfig).
+// For compatibility with callers that still pass cloud, use WriteConfig separately.
 func WriteCreds(email, token string, cloud ...string) error {
 	path, err := ConfigPath()
 	if err != nil {
@@ -171,9 +291,6 @@ func WriteCreds(email, token string, cloud ...string) error {
 		return fmt.Errorf("create config dir: %w", err)
 	}
 	content := fmt.Sprintf("email=%s\ntoken=%s\n", email, token)
-	if len(cloud) > 0 && cloud[0] != "" {
-		content += fmt.Sprintf("cloud=%s\n", cloud[0])
-	}
 	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
 		return fmt.Errorf("write credentials: %w", err)
 	}
@@ -256,29 +373,76 @@ func fetchCurrentUser(client httpClient, email, token, cloud string) userInfoRes
 	}
 }
 
+// fetchSpaces fetches accessible spaces from the Confluence API.
+// Returns the list of SpaceInfo and any error.
+func fetchSpaces(client httpClient, email, token, cloud string) ([]SpaceInfo, error) {
+	baseURL := fmt.Sprintf("https://%s.atlassian.net/wiki", cloud)
+	url := baseURL + "/api/v2/spaces?status=current&limit=250"
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("build request: %w", err)
+	}
+	cred := email + ":" + token
+	req.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(cred)))
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("network error: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("unexpected status %d fetching spaces", resp.StatusCode)
+	}
+
+	var result struct {
+		Results []struct {
+			ID          string `json:"id"`
+			Key         string `json:"key"`
+			Name        string `json:"name"`
+			HomepageID  string `json:"homepageId"`
+		} `json:"results"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("parse spaces response: %w", err)
+	}
+
+	spaces := make([]SpaceInfo, 0, len(result.Results))
+	for _, r := range result.Results {
+		spaces = append(spaces, SpaceInfo{
+			ID:         r.ID,
+			Key:        r.Key,
+			Name:       r.Name,
+			HomepageID: r.HomepageID,
+		})
+	}
+	return spaces, nil
+}
+
 // resolveCloud returns the effective Confluence cloud subdomain.
-// Priority: $ATLASSIAN_CLOUD env var → cloud= line in credentials file → "".
+// Priority: $ATLASSIAN_CLOUD env var → config file → old credentials file → "".
 // Callers must handle the empty case (e.g. error with a clear message).
 func resolveCloud() string {
 	if env := os.Getenv("ATLASSIAN_CLOUD"); env != "" {
 		return env
 	}
-	if fromCreds := ReadCloudFromCreds(); fromCreds != "" {
-		return fromCreds
-	}
-	return ""
+	cfg := ReadConfigFile()
+	return cfg.Cloud
 }
 
 // readLine reads a single trimmed line from r.
+// Uses bufio.Reader.ReadString to avoid reading ahead past the first newline,
+// so successive calls on the same underlying reader each get one line.
 func readLine(r io.Reader) (string, error) {
-	scanner := bufio.NewScanner(r)
-	if scanner.Scan() {
-		return strings.TrimSpace(scanner.Text()), nil
-	}
-	if err := scanner.Err(); err != nil {
+	br := bufio.NewReader(r)
+	line, err := br.ReadString('\n')
+	if err != nil && err != io.EOF {
 		return "", err
 	}
-	return "", io.EOF
+	line = strings.TrimRight(line, "\r\n")
+	return strings.TrimSpace(line), nil
 }
 
 // Run is the main entry point for the `setup` sub-command.
@@ -289,11 +453,15 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) (exitCode int
 // runWithClient is the testable core of Run with an injectable HTTP client.
 func runWithClient(args []string, stdin io.Reader, stdout, stderr io.Writer, client httpClient) (int, error) {
 	var (
-		email       string
-		token       string
-		doCheck     bool
-		printPath   bool
-		printFormat bool
+		email        string
+		token        string
+		doCheck      bool
+		doReconfigure bool
+		printPath    bool
+		printFormat  bool
+		setKey       string
+		setValue     string
+		doSet        bool
 	)
 
 	for i := 0; i < len(args); i++ {
@@ -319,10 +487,21 @@ func runWithClient(args []string, stdin io.Reader, stdout, stderr io.Writer, cli
 			token = a[8:]
 		case a == "--check":
 			doCheck = true
+		case a == "--reconfigure":
+			doReconfigure = true
 		case a == "--print-config-path":
 			printPath = true
 		case a == "--print-config-format":
 			printFormat = true
+		case a == "--set":
+			if i+2 >= len(args) {
+				fmt.Fprintln(stderr, "flag --set requires two values: --set <key> <value>")
+				return ExitNoCreds, fmt.Errorf("missing value")
+			}
+			setKey = args[i+1]
+			setValue = args[i+2]
+			doSet = true
+			i += 2
 		default:
 			fmt.Fprintln(stderr, "setup: unknown flag:", a)
 			return ExitNoCreds, fmt.Errorf("unknown flag: %s", a)
@@ -345,40 +524,110 @@ func runWithClient(args []string, stdin io.Reader, stdout, stderr io.Writer, cli
 		return ExitOK, nil
 	}
 
+	if doSet {
+		return runSet(setKey, setValue, stdout, stderr)
+	}
+
 	if doCheck {
 		return runCheck(stdout, stderr, client)
 	}
 
 	// Non-interactive mode: both flags provided.
-	if email != "" && token != "" {
+	if email != "" && token != "" && !doReconfigure {
 		return runNonInteractive(email, token, stdout, stderr, client)
 	}
 
-	// Interactive wizard.
-	return runInteractive(email, token, stdin, stdout, stderr, client)
+	// Interactive wizard (also handles --reconfigure which re-runs wizard with prefill).
+	prefillEmail := email
+	prefillToken := token
+	if doReconfigure {
+		// Prefill from existing credentials if not overridden by flags.
+		if prefillEmail == "" || prefillToken == "" {
+			existEmail, existToken, _ := ReadCredsFile(stderr)
+			if prefillEmail == "" {
+				prefillEmail = existEmail
+			}
+			if prefillToken == "" {
+				prefillToken = existToken
+			}
+		}
+	}
+	return runInteractive(prefillEmail, prefillToken, stdin, stdout, stderr, client)
+}
+
+// knownConfigKeys is the set of keys accepted by --set.
+var knownConfigKeys = map[string]bool{
+	"cloud":              true,
+	"active_space_id":    true,
+	"active_space_key":   true,
+	"active_space_name":  true,
+	"active_home_page_id": true,
+}
+
+// runSet implements `setup --set <key> <value>`.
+func runSet(key, value string, stdout, stderr io.Writer) (int, error) {
+	if !knownConfigKeys[key] {
+		fmt.Fprintf(stderr, "setup --set: unknown key %q\n", key)
+		fmt.Fprintln(stderr, "  valid keys: cloud, active_space_id, active_space_key, active_space_name, active_home_page_id")
+		fmt.Fprintln(stderr, "  tip: to switch spaces use `confluence-docs space use <key>` instead")
+		return ExitNoCreds, fmt.Errorf("unknown key: %s", key)
+	}
+	// Read existing config.
+	cfg := ReadConfigFile()
+	// Apply the new value.
+	switch key {
+	case "cloud":
+		cfg.Cloud = value
+	case "active_space_id":
+		cfg.SpaceID = value
+	case "active_space_key":
+		cfg.SpaceKey = value
+	case "active_space_name":
+		cfg.SpaceName = value
+	case "active_home_page_id":
+		cfg.HomePageID = value
+	}
+	if err := WriteConfig(cfg); err != nil {
+		fmt.Fprintln(stderr, "setup --set: writing config:", err)
+		return ExitNetworkErr, err
+	}
+	path, _ := ConfigFilePath()
+	fmt.Fprintf(stdout, "config updated: %s = %q (saved to %s)\n", key, value, path)
+	return ExitOK, nil
 }
 
 // runCheck validates existing credentials and returns the appropriate exit code.
 func runCheck(stdout, stderr io.Writer, client httpClient) (int, error) {
 	email, token, err := ReadCredsFile(stderr)
 	if err != nil {
-		fmt.Fprintln(stderr, "no credentials configured")
+		if os.IsNotExist(err) {
+			fmt.Fprintln(stderr, "no credentials configured — run `confluence-docs setup`")
+		} else {
+			fmt.Fprintln(stderr, "no credentials configured")
+		}
 		return ExitNoCreds, nil
 	}
 	if email == "" || token == "" {
-		fmt.Fprintln(stderr, "no credentials configured")
+		fmt.Fprintln(stderr, "no credentials configured — run `confluence-docs setup`")
 		return ExitNoCreds, nil
 	}
 
 	cloud := resolveCloud()
 	if cloud == "" {
-		fmt.Fprintln(stderr, "no Confluence subdomain configured")
+		fmt.Fprintln(stderr, "no Confluence subdomain configured — run `confluence-docs setup`")
 		fmt.Fprintln(stderr, "  fix: run `confluence-docs setup` and provide your subdomain")
 		fmt.Fprintln(stderr, "       (e.g. 'mycompany' for mycompany.atlassian.net),")
-		fmt.Fprintln(stderr, "       or export ATLASSIAN_CLOUD=mycompany,")
-		fmt.Fprintln(stderr, "       or add `cloud=mycompany` to the credentials file.")
+		fmt.Fprintln(stderr, "       or export ATLASSIAN_CLOUD=mycompany")
 		return ExitNoCreds, nil
 	}
+
+	// Also validate space is configured.
+	cfg := ReadConfigFile()
+	if cfg.SpaceID == "" || cfg.HomePageID == "" {
+		fmt.Fprintln(stderr, "no active space configured — run `confluence-docs setup` or `confluence-docs space use <key>`")
+		return ExitNoCreds, nil
+	}
+
 	res := fetchCurrentUser(client, email, token, cloud)
 	if res.Err != nil {
 		fmt.Fprintf(stderr, "could not validate (network error): %v\n", res.Err)
@@ -397,7 +646,7 @@ func runCheck(stdout, stderr io.Writer, client httpClient) (int, error) {
 	if name == "" {
 		name = email
 	}
-	fmt.Fprintf(stdout, "credentials valid (%s)\n", name)
+	fmt.Fprintf(stdout, "credentials valid (%s, space: %s)\n", name, cfg.SpaceKey)
 	return ExitOK, nil
 }
 
@@ -425,11 +674,16 @@ func runNonInteractive(email, token string, stdout, stderr io.Writer, client htt
 		return ExitNetworkErr, nil
 	}
 
-	// Persist the cloud subdomain too so subsequent runs don't need the env
-	// var. If it came from env we still write it — explicit storage avoids
-	// surprise when the user later launches a shell without the env set.
-	if err := WriteCreds(email, token, cloud); err != nil {
+	// Write secrets only to credentials file.
+	if err := WriteCreds(email, token); err != nil {
 		fmt.Fprintln(stderr, "error saving credentials:", err)
+		return ExitNetworkErr, err
+	}
+	// Persist cloud to config file (migrate old single-file format).
+	cfg := ReadConfigFile()
+	cfg.Cloud = cloud
+	if err := WriteConfig(cfg); err != nil {
+		fmt.Fprintln(stderr, "error saving config:", err)
 		return ExitNetworkErr, err
 	}
 
@@ -440,7 +694,11 @@ func runNonInteractive(email, token string, stdout, stderr io.Writer, client htt
 }
 
 // runInteractive runs the interactive setup wizard.
-func runInteractive(prefillEmail, prefillToken string, stdin io.Reader, stdout, stderr io.Writer, client httpClient) (int, error) {
+func runInteractive(prefillEmail, prefillToken string, stdinRaw io.Reader, stdout, stderr io.Writer, client httpClient) (int, error) {
+	// Wrap stdin in a buffered reader once. readLine calls bufio.NewReader(stdin)
+	// internally — when stdin is already a *bufio.Reader, bufio.NewReader returns
+	// it unchanged, so successive readLine calls each consume one line correctly.
+	stdin := bufio.NewReader(stdinRaw)
 	// Detect if we're likely in a headless environment (no interactive terminal).
 	// We still proceed identically — just print a note to stderr.
 	if isHeadless() {
@@ -493,7 +751,7 @@ func runInteractive(prefillEmail, prefillToken string, stdin io.Reader, stdout, 
 	}
 
 	// Ask for the Confluence cloud subdomain. The default is whatever
-	// resolveCloud() returns (env var or existing creds file value).
+	// resolveCloud() returns (env var or existing config file value).
 	currentCloud := resolveCloud()
 	prompt := "Confluence subdomain (e.g. 'mycompany' for mycompany.atlassian.net)"
 	if currentCloud != "" {
@@ -534,9 +792,77 @@ func runInteractive(prefillEmail, prefillToken string, stdin io.Reader, stdout, 
 		fmt.Fprintf(stdout, "\nerror: unexpected status %d\n", res.StatusCode)
 		return ExitNetworkErr, nil
 	}
+	fmt.Fprintln(stdout, "ok")
 
-	if err := WriteCreds(email, token, cloud); err != nil {
+	// Step 6: auto-detect spaces via API.
+	fmt.Fprint(stdout, "Fetching accessible spaces... ")
+	spaces, spaceErr := fetchSpaces(client, email, token, cloud)
+	if spaceErr != nil {
+		fmt.Fprintf(stdout, "\nwarning: could not fetch spaces (%v)\n", spaceErr)
+		fmt.Fprintln(stdout, "Space configuration skipped. Run `confluence-docs space use <key>` later.")
+		spaces = nil
+	}
+
+	var chosenSpace *SpaceInfo
+	switch {
+	case len(spaces) == 0 && spaceErr == nil:
+		fmt.Fprintln(stdout, "\nno accessible spaces found")
+		fmt.Fprintln(stdout, "Space configuration skipped. Run `confluence-docs space use <key>` after gaining access.")
+	case len(spaces) == 1:
+		chosenSpace = &spaces[0]
+		fmt.Fprintf(stdout, "found 1 space: %s (%s)\n", chosenSpace.Name, chosenSpace.Key)
+	case len(spaces) > 1:
+		fmt.Fprintf(stdout, "found %d spaces:\n", len(spaces))
+		for i, s := range spaces {
+			fmt.Fprintf(stdout, "  %d. %s (%s, id %s)\n", i+1, s.Name, s.Key, s.ID)
+		}
+
+		// Check if there's a current active space to use as default.
+		currentCfg := ReadConfigFile()
+		defaultIdx := 1
+		if currentCfg.SpaceKey != "" {
+			for i, s := range spaces {
+				if s.Key == currentCfg.SpaceKey {
+					defaultIdx = i + 1
+					break
+				}
+			}
+		}
+
+		fmt.Fprintf(stdout, "Select space [%d]: ", defaultIdx)
+		choiceStr, choiceErr := readLine(stdin)
+		if choiceErr != nil {
+			fmt.Fprintln(stderr, "setup cancelled")
+			return ExitNoCreds, nil
+		}
+		if choiceStr == "" {
+			choiceStr = fmt.Sprintf("%d", defaultIdx)
+		}
+		var choiceNum int
+		if _, scanErr := fmt.Sscanf(choiceStr, "%d", &choiceNum); scanErr != nil || choiceNum < 1 || choiceNum > len(spaces) {
+			fmt.Fprintf(stderr, "invalid selection %q — setup cancelled\n", choiceStr)
+			return ExitNoCreds, nil
+		}
+		s := spaces[choiceNum-1]
+		chosenSpace = &s
+	}
+
+	// Write secrets to credentials file.
+	if err := WriteCreds(email, token); err != nil {
 		fmt.Fprintln(stdout, "\nerror saving credentials:", err)
+		return ExitNetworkErr, err
+	}
+
+	// Build and write config.
+	cfg := Config{Cloud: cloud}
+	if chosenSpace != nil {
+		cfg.SpaceID = chosenSpace.ID
+		cfg.SpaceKey = chosenSpace.Key
+		cfg.SpaceName = chosenSpace.Name
+		cfg.HomePageID = chosenSpace.HomepageID
+	}
+	if err := WriteConfig(cfg); err != nil {
+		fmt.Fprintln(stdout, "\nerror saving config:", err)
 		return ExitNetworkErr, err
 	}
 
@@ -545,10 +871,17 @@ func runInteractive(prefillEmail, prefillToken string, stdin io.Reader, stdout, 
 		name = email
 	}
 	fmt.Fprintf(stdout, "connected as %s (%s at %s)\n", name, res.AccountID, cloud)
+	if chosenSpace != nil {
+		fmt.Fprintf(stdout, "active space: %s (key: %s, id: %s)\n", chosenSpace.Name, chosenSpace.Key, chosenSpace.ID)
+		if chosenSpace.HomepageID != "" {
+			fmt.Fprintf(stdout, "home page ID: %s\n", chosenSpace.HomepageID)
+		}
+	}
 	fmt.Fprintln(stdout)
 	fmt.Fprintln(stdout, "Done. You can now use:")
 	fmt.Fprintln(stdout, "  confluence-docs page get/upload/create")
 	fmt.Fprintln(stdout, "  confluence-docs index add/remove/sync")
+	fmt.Fprintln(stdout, "  confluence-docs space list/use/current")
 	return ExitOK, nil
 }
 

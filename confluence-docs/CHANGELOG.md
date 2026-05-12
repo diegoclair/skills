@@ -1,5 +1,72 @@
 # Changelog — confluence-docs
 
+## v0.10.0 (2026-05-12) — split credentials/config + multi-space support
+
+### Overview
+
+This release removes all hardcoded Lybel-specific constants (`homePageID`, `homeSpaceID`, `defaultCloud`) from the binary and adds first-class multi-space management. Any Confluence Cloud instance with multiple spaces is now fully supported without editing config files by hand.
+
+### Change 1 — Two config files instead of one
+
+**Before (v0.9.x):** single `credentials` file stored email, token, and cloud together.
+
+**After (v0.10.0):**
+- `credentials` (perms `0600`) — `email` + `token` only.
+- `config` (perms `0644`) — `cloud`, `active_space_id`, `active_space_key`, `active_space_name`, `active_home_page_id`.
+
+Splitting secrets from non-sensitive config makes the config file safe to copy between machines and inspect without exposing credentials.
+
+**Backward compat:** existing `credentials` files with `cloud=` continue to work as a fallback. Migration happens silently when the user re-runs `setup`.
+
+### Change 2 — `setup` auto-detects spaces
+
+The interactive wizard now calls `GET /wiki/api/v2/spaces?status=current&limit=250` after validating credentials:
+- 0 spaces: completes setup but warns that space must be configured separately.
+- 1 space: selects it automatically (no prompt).
+- N spaces: lists them numbered; user picks one (default `1`).
+
+The selected space's `id`, `key`, `name`, and `homepageId` are persisted to the `config` file. `setup --check` now validates that both credentials **and** active space are configured.
+
+New flags:
+- `setup --reconfigure` — re-runs the full wizard with current values pre-filled.
+- `setup --set <key> <value>` — sets one config key without prompting (valid keys: `cloud`, `active_space_id`, `active_space_key`, `active_space_name`, `active_home_page_id`).
+
+### Change 3 — New `space` subcommand family
+
+```bash
+confluence-docs space list               # TSV by default; --json for structured output
+confluence-docs space list --refresh     # force API fetch, ignore 1h cache
+confluence-docs space use <key>          # switch active space + update config
+confluence-docs space current            # show active space; --json for structured output
+```
+
+Space list is cached for 1h at `~/.cache/confluence-docs/spaces.json`.
+
+### Change 4 — Hardcoded constants removed from `main.go`
+
+`homePageID = "164232"`, `homeSpaceID = "131352"`, and `defaultCloud = "lybel"` are gone. Replaced by:
+
+- `currentHomePageID()` — reads `active_home_page_id` from config.
+- `currentSpaceID()` — reads `active_space_id`.
+- `currentSpaceKey()` — reads `active_space_key`.
+- `pageWebURL(client, pageID)` — builds the page URL using the configured space key.
+
+All commands that previously hardcoded the Lybel space now fail gracefully with "no active space configured — run `confluence-docs setup`" if the config is missing.
+
+### Change 5 — `adf` package additions
+
+- `ReadActiveConfig()` — returns `ActiveConfig` (Cloud, SpaceID, SpaceKey, SpaceName, HomePageID) from the config file, with backward-compat fallback to old `credentials` file.
+- `ResolveCloud(override)` — now reads from config file first, then old credentials file (backward compat), then returns `""`.
+- `ConfluenceClient.ListSpaces()` — calls `GET /api/v2/spaces?status=current&limit=250`.
+
+### Migration path for v0.9.x users
+
+No action required for normal use — the CLI reads `cloud=` from the old `credentials` file until the user re-runs `setup`. After running `confluence-docs setup` once, both files are rewritten cleanly.
+
+For users with only one accessible space, setup completes automatically. For multi-space users, the wizard lists spaces and prompts for selection.
+
+---
+
 ## v0.9.2 (2026-05-12) — cloud subdomain in credentials file + README in English
 
 ### Cloud subdomain is now configured, not hardcoded

@@ -12,7 +12,9 @@
 // Cloud subdomain is resolved in order:
 //  1. Explicit cloud passed to NewClient
 //  2. $ATLASSIAN_CLOUD env var
-//  3. Default "lybel"
+//  3. cloud= line in config file (~/.config/confluence-docs/config)
+//  4. cloud= line in old credentials file (v0.9.x backward compat)
+//  5. "" — caller must surface a clear error
 package adf
 
 import (
@@ -41,6 +43,68 @@ func configPath() (string, error) {
 		return "", err
 	}
 	return filepath.Join(dir, "confluence-docs", "credentials"), nil
+}
+
+// configFilePath returns the path to the non-sensitive config file
+// (~/.config/confluence-docs/config or platform equivalent).
+func configFilePath() (string, error) {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "confluence-docs", "config"), nil
+}
+
+// ActiveConfig holds the workspace config read from the config file.
+type ActiveConfig struct {
+	Cloud      string
+	SpaceID    string
+	SpaceKey   string
+	SpaceName  string
+	HomePageID string
+}
+
+// ReadActiveConfig reads the config file and returns the active workspace
+// configuration. Falls back to reading cloud= from the old credentials file for
+// v0.9.x backward compatibility. Returns zero-value ActiveConfig on any error.
+func ReadActiveConfig() ActiveConfig {
+	var cfg ActiveConfig
+
+	path, err := configFilePath()
+	if err == nil {
+		if data, rerr := os.ReadFile(path); rerr == nil {
+			for _, line := range strings.Split(string(data), "\n") {
+				line = strings.TrimSpace(line)
+				if line == "" || strings.HasPrefix(line, "#") {
+					continue
+				}
+				kv := strings.SplitN(line, "=", 2)
+				if len(kv) != 2 {
+					continue
+				}
+				key := strings.TrimSpace(kv[0])
+				val := strings.TrimSpace(kv[1])
+				switch key {
+				case "cloud":
+					cfg.Cloud = val
+				case "active_space_id":
+					cfg.SpaceID = val
+				case "active_space_key":
+					cfg.SpaceKey = val
+				case "active_space_name":
+					cfg.SpaceName = val
+				case "active_home_page_id":
+					cfg.HomePageID = val
+				}
+			}
+		}
+	}
+
+	// Backward compat: if cloud not set from config file, try old creds file.
+	if cfg.Cloud == "" {
+		cfg.Cloud = cloudFromOldCredsFile()
+	}
+	return cfg
 }
 
 // legacyConfigPath returns the pre-migration path ~/.config/confluence-docs/credentials.
@@ -138,10 +202,10 @@ type PageCreateResult struct {
 }
 
 // ResolveCloud returns the effective cloud subdomain, checking (in order):
-// the explicit override, $ATLASSIAN_CLOUD, the `cloud=` line in the credentials
-// file. Returns "" if none is set — callers must surface a clear error to the
-// user (e.g. "run `confluence-docs setup` to configure your Confluence
-// subdomain"). The legacy default "lybel" is gone — this is a multi-tenant skill.
+// the explicit override, $ATLASSIAN_CLOUD, the config file, the old credentials
+// file (v0.9.x backward compat). Returns "" if none is set — callers must
+// surface a clear error to the user (e.g. "run `confluence-docs setup` to
+// configure your Confluence subdomain").
 func ResolveCloud(override string) string {
 	if override != "" {
 		return override
@@ -149,12 +213,40 @@ func ResolveCloud(override string) string {
 	if env := os.Getenv("ATLASSIAN_CLOUD"); env != "" {
 		return env
 	}
-	return cloudFromCredsFile()
+	return cloudFromConfigFile()
 }
 
-// cloudFromCredsFile reads the `cloud=` line from the credentials file.
-// Returns "" on any error (caller treats it as "not set").
-func cloudFromCredsFile() string {
+// cloudFromConfigFile reads the `cloud=` line from the new config file
+// (~/.config/confluence-docs/config). Falls back to the old credentials file
+// for backward compatibility with v0.9.x installs.
+// Returns "" on any error or when the key is absent.
+func cloudFromConfigFile() string {
+	// Try the new config file first.
+	cfgPath, err := configFilePath()
+	if err == nil {
+		if data, rerr := os.ReadFile(cfgPath); rerr == nil {
+			for _, line := range strings.Split(string(data), "\n") {
+				line = strings.TrimSpace(line)
+				if line == "" || strings.HasPrefix(line, "#") {
+					continue
+				}
+				kv := strings.SplitN(line, "=", 2)
+				if len(kv) != 2 {
+					continue
+				}
+				if strings.TrimSpace(kv[0]) == "cloud" {
+					return strings.TrimSpace(kv[1])
+				}
+			}
+		}
+	}
+	// Backward compat: read from old credentials file.
+	return cloudFromOldCredsFile()
+}
+
+// cloudFromOldCredsFile reads the `cloud=` line from the old single credentials
+// file (v0.9.x format). Returns "" on any error or when the key is absent.
+func cloudFromOldCredsFile() string {
 	path, err := configPath()
 	if err != nil {
 		return ""
@@ -786,6 +878,32 @@ func stripExcerptHTML(s string) string {
 // BaseURL returns the base URL of this client.
 func (c *ConfluenceClient) BaseURL() string {
 	return c.baseURL
+}
+
+// ---------- Spaces ----------
+
+// SpaceResult is a single space returned by the list-spaces API.
+type SpaceResult struct {
+	ID         string `json:"id"`
+	Key        string `json:"key"`
+	Name       string `json:"name"`
+	HomepageID string `json:"homepageId"`
+}
+
+// ListSpaces fetches up to 250 current spaces accessible to the authenticated
+// user. Uses the v2 API endpoint GET /api/v2/spaces?status=current&limit=250.
+func (c *ConfluenceClient) ListSpaces() ([]SpaceResult, error) {
+	data, _, err := c.doRequest("GET", "/api/v2/spaces?status=current&limit=250", nil)
+	if err != nil {
+		return nil, fmt.Errorf("list spaces: %w", err)
+	}
+	var resp struct {
+		Results []SpaceResult `json:"results"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, fmt.Errorf("parse spaces response: %w", err)
+	}
+	return resp.Results, nil
 }
 
 // ---------- Page Properties (appearance) ----------

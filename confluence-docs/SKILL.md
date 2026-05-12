@@ -1,7 +1,7 @@
 ---
 name: confluence-docs
 description: |
-  Navigation assistant for Lybel's Confluence knowledge base (space `lybel` at lybel.atlassian.net) — search, create, list, update pages. Aliases: confluence, wiki, kb, base de conhecimento, página/doc da Lybel, anota isso, registra isso, salva no doc, joga no wiki. Use for any Lybel documentation: processes, partners, advisors, investors, accelerators, retailers, fornecedores, roadmap, strategy, marca, design system, governance, or organizational artifact — even when "Confluence" isn't said. Triggers (pt-BR): "onde fica X", "me dá a página de Y", "cria página pra Z", "lista X", "qual o status de Y", "tem doc sobre Z", "adiciona isso", "documenta esse processo", "atualiza a página de Q", "adiciona advisor/parceiro/investidor", "anota no kb". Stores no specific data — fresh state lives in Confluence, fetched at session start via local CLI cache (preferred) or Atlassian MCP (fallback). Always replies in pt-BR with full URLs to lybel.atlassian.net.
+  Navigation assistant for your Confluence knowledge base — search, create, list, update pages. Aliases: confluence, wiki, kb, knowledge base, docs. Use for any project documentation: processes, partners, decisions, roadmap, strategy, design system, governance, or any organizational artifact — even when "Confluence" isn't mentioned. Triggers: "where is X", "find the page for Y", "create a page for Z", "list X", "what's the status of Y", "is there a doc about Z", "add this", "document this process", "update the page for Q", "add advisor/partner/investor", "log this in the kb". Stores no specific data — fresh state lives in Confluence, fetched at session start via local CLI cache (preferred) or Atlassian MCP (fallback). Replies using the same language as the user.
 allowed-tools: |
   Bash(confluence-docs *)
   mcp__atlassian__getConfluencePage
@@ -16,23 +16,22 @@ allowed-tools: |
   Write
 ---
 
-# Lybel Docs — Confluence Knowledge Base Assistant
+# Confluence Docs — Knowledge Base Assistant
 
 ## Overview
 
-Skill that connects Claude to Lybel's Confluence (`lybel.atlassian.net`, space key `lybel`) to search, create, list and update documentation in natural language — in Portuguese, without manually opening Confluence.
+Skill that connects Claude to your Confluence space to search, create, list and update documentation in natural language — without manually opening Confluence.
 
 The skill is **deliberately timeless**: it stores no names, lists or state (advisors, investors, partners, accelerators, page IDs). All of that lives in Confluence and is read fresh in every session starting from the Home. The `reference/` files here are generic fallback, not the source of truth.
 
 ## Language rule
 
-**This document is in English for Claude's performance (Claude is trained primarily on English data, and English instructions yield more robust reasoning). However, all user-facing output MUST be in Brazilian Portuguese (pt-BR).**
+**This document is in English for Claude's performance (Claude is trained primarily on English data, and English instructions yield more robust reasoning). However, all user-facing output MUST match the user's language and match their tone (formal/informal as they write).**
 
 When you respond to the user:
-- Use Brazilian Portuguese
-- Match the user's tone (formal/informal as they write)
-- Keep page titles, category names, and content IN PORTUGUESE (they exist in Portuguese in Confluence)
-- Only technical terms or proper nouns stay in English
+- Use the same language the user writes in
+- Keep page titles, category names, and content in whatever language they exist in Confluence
+- Only technical terms or proper nouns stay in English when the user writes in another language
 
 ## Tool priority — CLI first, MCP as fallback
 
@@ -52,7 +51,7 @@ In **EVERY new session**, just use the Home commands directly. The CLI handles f
 1. **Read the cache for navigation — auto-refreshes when stale:**
    ```
    confluence-docs home --query "advisor"           # alias/decision lookup
-   confluence-docs home --query "Aceleração"        # find category + pageId
+   confluence-docs home --query "Programs"          # find category + pageId
    confluence-docs home --digest                    # outline view (~500 bytes)
    confluence-docs home --show                      # full text rendering
    ```
@@ -76,14 +75,14 @@ Three rules govern when the cache is updated:
 | Trigger | Behavior |
 |---|---|
 | Read with stale cache (>1h old) or missing | **Auto-refresh** before serving. Caller doesn't have to think about it. |
-| Write to the Home via CLI (`page apply`, `index add/remove/sync` on pageId 164232) | **Auto-refresh after PUT** succeeds. Your session sees the new state immediately. |
+| Write to the Home via CLI (`page apply`, `index add/remove/sync` on the Home pageId) | **Auto-refresh after PUT** succeeds. Your session sees the new state immediately. |
 | Explicit `home --refresh` | **Always fetches**, ignores TTL. Use only when you know another machine just edited the Home and you don't want to wait for the TTL. |
 
 What this means in practice: in a typical session, you never call `home --refresh` explicitly. You just query/show/digest, and writes refresh themselves.
 
 **WRITE SAFETY (critical):** the cache is **read-only for navigation**. It is **NEVER** the source for an update. Any mutation of the Home (or any page) goes through `page apply`, which always GETs fresh ADF before PUT — ensuring you never overwrite changes someone made on another machine.
 
-This skill is deliberately **timeless**. It stores no specific names (advisors, investors, retailers, accelerators) — everything comes fresh from Confluence whenever you query, with the cache layer making it cheap.
+This skill is deliberately **timeless**. It stores no specific names (advisors, investors, partners, accelerators) — everything comes fresh from Confluence whenever you query, with the cache layer making it cheap.
 
 **Token-cost rule of thumb:** prefer cached `home --query/--show` over `page digest` over `page get` over MCP. Only escalate to a full read when the cheaper option doesn't carry the answer.
 
@@ -97,7 +96,7 @@ Project-specific routing (your category structure, aliases, templates) lives on 
 
 ## Default workflows
 
-### 1. Search — "onde fica X" / "tem doc sobre Y?"
+### 1. Search — "where is X" / "is there a doc about Y?"
 
 **Source-of-truth ladder for resolving a term to a pageId.** Try in order; stop at the first one that returns a plausible match. The next `page digest` call functions as the verification step — if the title or content doesn't match expectations, fall back to the next rung.
 
@@ -107,7 +106,7 @@ Project-specific routing (your category structure, aliases, templates) lives on 
    ```
    confluence-docs home --query "<term>"
    ```
-   Hits the Page ID Index, aliases, and "Onde coloco X?" decision map. Returns matching lines grouped by section.
+   Hits the Page ID Index, aliases, and "Where do I put X?" decision map. Returns matching lines grouped by section.
 
    **Single term per call** — no OR / regex / multi-term syntax. To search multiple terms, run the command multiple times (each call is local and cheap, zero API cost). Same applies to `--show` + `grep` if you need a richer pattern.
 
@@ -115,7 +114,7 @@ Project-specific routing (your category structure, aliases, templates) lives on 
    ```
    confluence-docs search "<term>" --limit 5
    ```
-   Output is TSV: `pageId<TAB>title<TAB>url<TAB>excerpt`. ~150 bytes per result. The default CQL is `space="lybel" AND type="page" AND (title ~ "term" OR text ~ "term")`. Pass `--cql "raw CQL"` for fine control.
+   Output is TSV: `pageId<TAB>title<TAB>url<TAB>excerpt`. ~150 bytes per result. The default CQL is `space="<YOUR_SPACE>" AND type="page" AND (title ~ "term" OR text ~ "term")`. Pass `--cql "raw CQL"` for fine control.
 
 4. **Confirm and return.** Once you have a pageId, call `page digest --page-id <id>` to verify the page exists and matches the user's intent before quoting it back. If returning multiple results from `search`, format as bullets: `- **Title** — excerpt (URL)`.
 
@@ -123,7 +122,7 @@ Project-specific routing (your category structure, aliases, templates) lives on 
 
 **Why the memory-first rung exists:** memory files capture stable IDs that survive across sessions. Going straight to `page digest` skips two steps with no downside — the digest is cheap and self-validating. Don't over-think it: if you have an ID and a name that matches what the user asked, just check the digest.
 
-### 2. Read a page — "me dá a página de Y" / "o que tem em Z"
+### 2. Read a page — "get the page for Y" / "what's in Z"
 
 **Three-step cascade**, escalate only when needed:
 
@@ -133,12 +132,12 @@ Project-specific routing (your category structure, aliases, templates) lives on 
 confluence-docs page digest --page-id <id>
 ```
 
-The digest also carries a `Status` line when the title starts with a Lybel status emoji (🟢 active, 🟡 in-progress, 🟠 evaluating, 🔴 blocked, 🔵 researched, ⚪ idle, ✅ done). For "qual o status de X" questions, this single field is often the entire answer. Add `--json` to get a structured object.
+The digest also carries a `Status` line when the title starts with a status emoji (see the **Optional status-emoji pattern** in the Tool preferences section below). For "what's the status of X" questions, this single field is often the entire answer. Add `--json` to get a structured object.
 
 **Step 2 — `get --section "Heading" --format text` (one section, ~hundreds of bytes).** When the digest tells you which section has the answer, fetch just that section as readable plain text:
 
 ```
-confluence-docs page get --page-id <id> --section "📌 Veredito atual" --format text
+confluence-docs page get --page-id <id> --section "Status" --format text
 ```
 
 Section bounds = heading + all following nodes until the next heading of equal-or-higher level (so an h2 includes its h3 children). Use `--at-level N` to disambiguate when the same heading text appears at multiple levels. Output is markdown-ish (`## headings`, `- bullets`, pipe-tables, `[text](url)` links) — readable by a human and trivially parseable by an agent.
@@ -153,7 +152,7 @@ confluence-docs page get --page-id <id> --format export_view  # rendered HTML
 
 **`--output FILE` and `--quiet`** are available on all `page get` invocations: `--output` writes to disk instead of stdout; `--quiet` suppresses the "wrote N bytes" stderr message. Use `--quiet` when the caller captures both streams.
 
-### 3. Create — "cria página pra Z"
+### 3. Create — "create a page for Z"
 
 1. Run `confluence-docs check --title "..."` first to surface near-duplicates.
 2. Use the Home's "where do I put X?" map (or equivalent on your project) to discover the correct parent page.
@@ -164,14 +163,14 @@ confluence-docs page get --page-id <id> --format export_view  # rendered HTML
 5. Create directly via the CLI (single command, no MCP round-trip):
    ```
    confluence-docs page create \
-     --space-id 131352 --parent-id <parentId> --title "Final Title" \
-     --markdown /tmp/lybel-edit/page.md
+     --space-id <SPACE_ID> --parent-id <parentId> --title "Final Title" \
+     --markdown /tmp/page.md
    ```
 6. The CLI prints `{"pageId": "...", "title": "...", "url": "..."}`. Return the final URL to the user.
 
 **Fallback** (CLI unavailable): `mcp__atlassian__createConfluencePage` with `contentFormat: "adf"` after running `confluence-docs adf` to convert the markdown. Last resort: `contentFormat: "markdown"`.
 
-### 4. Update — "atualiza a página de X" / "adiciona seção Y"
+### 4. Update — "update the page for X" / "add section Y"
 
 **Never build ADF by hand, and never use `contentFormat: "markdown"` to update a page with macros** (TOC, Expand, panel). Markdown update flattens macros and silently destroys structure.
 
@@ -180,31 +179,31 @@ confluence-docs page get --page-id <id> --format export_view  # rendered HTML
 ```
 # Replace a single section, preserving every macro outside it
 confluence-docs page apply --page-id <id> \
-  --replace-section "Roadmap" --fragment /tmp/lybel-edit/new.md \
+  --replace-section "Roadmap" --fragment /tmp/new.md \
   --message "rewrite roadmap"
 
 # Append a new section at the end
 confluence-docs page apply --page-id <id> \
-  --append --fragment /tmp/lybel-edit/new.md \
+  --append --fragment /tmp/new.md \
   --message "add Q3 retrospective"
 
 # Insert relative to an existing heading
 confluence-docs page apply --page-id <id> \
-  --insert-after "Research" --fragment /tmp/lybel-edit/new.md
+  --insert-after "Research" --fragment /tmp/new.md
 
 confluence-docs page apply --page-id <id> \
-  --insert-before "FAQ" --fragment /tmp/lybel-edit/new.md
+  --insert-before "FAQ" --fragment /tmp/new.md
 
 # Delete a stale section
-confluence-docs page apply --page-id <id> --delete-section "TODO antigo"
+confluence-docs page apply --page-id <id> --delete-section "Old TODO"
 
 # Disambiguate when the same heading text appears at multiple levels
 confluence-docs page apply --page-id <id> \
-  --replace-section "Ops" --at-level 3 --fragment /tmp/lybel-edit/new.md
+  --replace-section "Ops" --at-level 3 --fragment /tmp/new.md
 
 # Add a row to a table inside a section (idempotent with --if-missing)
 confluence-docs page apply --page-id <id> \
-  --table-add-row "Status atual" --row "Acme Corp|🟡 Em avaliação|Origem X|nota" \
+  --table-add-row "Current Status" --row "Acme Corp|🟡 In progress|Source X|note" \
   --if-missing --message "add Acme to status table"
 
 # Cells with literal pipes: escape with backslash
@@ -214,17 +213,17 @@ confluence-docs page apply --page-id <id> \
 
 # Remove a row by matching cell text
 confluence-docs page apply --page-id <id> \
-  --table-remove-row "Status atual" --match-cell "Acme Corp"
+  --table-remove-row "Current Status" --match-cell "Acme Corp"
 
-# Update a single cell (cirurgical — preserves the rest of the table)
+# Update a single cell (surgical — preserves the rest of the table)
 confluence-docs page apply --page-id <id> \
-  --table-update-cell "Status atual" --match-cell "Acme Corp" \
+  --table-update-cell "Current Status" --match-cell "Acme Corp" \
   --col-name "Status" --value "✅ Done"
 
 # Replace an entire row (for multi-cell updates)
 confluence-docs page apply --page-id <id> \
-  --table-update-row "Status atual" --match-cell "Acme Corp" \
-  --row "Acme Corp|✅ Done|Origem X|fechado"
+  --table-update-row "Current Status" --match-cell "Acme Corp" \
+  --row "Acme Corp|✅ Done|Source X|closed"
 
 # Preview without writing
 confluence-docs page apply --page-id <id> \
@@ -247,7 +246,7 @@ For section replacement, include the heading line in the fragment markdown. Sect
 
 If the page has macros and no CLI is installed, warn the user that updating via `markdown` may destroy structure and ask them to install the CLI first.
 
-### 5. List — "quais aceleradoras temos" / "lista parceiros"
+### 5. List — "what programs do we have" / "list partners"
 
 1. Identify the category via the Home.
 2. Use the CLI to list direct children:
@@ -259,17 +258,17 @@ If the page has macros and no CLI is installed, warn the user that updating via 
 
 **Fallback**: `mcp__atlassian__getPagesInConfluenceSpace` or `getConfluencePageDescendants`.
 
-### 6. Status — "qual o status de X"
+### 6. Status — "what's the status of X"
 
-For most "qual o status" questions, the digest is enough — it shows the page's headings, last version number, and which macros are present (status macros show up). For richer status (labels, properties), see Workflow 5 in `reference/workflows.md`. Always cite the date of the last update.
+For most "what's the status" questions, the digest is enough — it shows the page's headings, last version number, and which macros are present (status macros show up). For richer status (labels, properties), see Workflow 5 in `reference/workflows.md`. Always cite the date of the last update.
 
-### 7. Add relationship — "adiciona advisor/parceiro/investidor X"
+### 7. Add relationship — "add advisor/partner/investor X"
 
 1. Verify in the Home which department/category is correct (advisor ≠ investor ≠ commercial partner).
 2. Confirm template (Advisor Sheet, Investor Sheet, Partner Sheet).
 3. Create under the correct parent (Workflow 3). Always confirm location before.
 
-### 8. Reorganize — "renomeia X" / "move X pra dentro de Y" / "reordena X" / "deleta X"
+### 8. Reorganize — "rename X" / "move X under Y" / "reorder X" / "delete X"
 
 The `page move`, `page reorder`, and `page delete` verbs handle structural changes without touching the page body. Use them when the user asks to rename, reparent, reorder, or trash a page. **Always confirm the target with the user before deleting** — even soft delete (Confluence trash is restorable, but the user should still authorize).
 
@@ -308,7 +307,7 @@ confluence-docs page delete --page-id <id> --yes
 
 **Bulk reorganizations:** when reparenting multiple pages or doing a multi-step restructure (rename + move + reorder + delete cascade), prefer running each `page move` / `page reorder` / `page delete` as its own atomic command. The CLI returns a one-line JSON status per call (~50 bytes), so even 10–20 calls stay cheap. Confirm the new tree with `page children` afterwards.
 
-## Editorial patterns for Lybel pages
+## Editorial patterns
 
 Every **decision**, **proposal**, **strategy**, or **spec** page must follow two conventions. Index pages, reference pages and glossaries can skip them.
 
@@ -316,12 +315,12 @@ Every **decision**, **proposal**, **strategy**, or **spec** page must follow two
 
 Start every page with a small header block (quote/callout) containing:
 
-> **Contexto:** (one-line summary of what the page is about)
-> **Criado em:** YYYY-MM-DD | **Atualizado em:** YYYY-MM-DD | **Criado por:** [nome]
+> **Context:** (one-line summary of what the page is about)
+> **Created:** YYYY-MM-DD | **Updated:** YYYY-MM-DD | **Author:** [name]
 
-When updating a page, bump the "Atualizado em" date. On first creation, author comes from the current user (confirm if unknown).
+When updating a page, bump the "Updated" date. On first creation, author comes from the current user (confirm if unknown).
 
-### Pattern 2 — Contexto → Problema → Solução structure
+### Pattern 2 — Context → Problem → Solution structure
 
 For decision/proposal/strategy pages, organize the body around three sections:
 
@@ -341,39 +340,39 @@ See `reference/doc-types.md` § Section 2 (Decision type) for the canonical stru
 
 Pages are read by people who weren't in the conversation that generated them. Before saving:
 
-- **Technical jargon** (Merchant of Record, Variante A, MCP, UCP, commission fee, postback, etc.) must be explained briefly on first use OR linked to a page that explains. Don't assume context.
-- **Internal labels** (Variante A, Onda 2, v0.1) should come with a short gloss when first introduced on a page.
-- **References to other work** (research, analysis, previous decisions) must be linked to the actual Confluence page — never just mention "analisamos X" without linking X.
+- **Technical jargon** (Merchant of Record, Variant A, MCP, commission fee, postback, etc.) must be explained briefly on first use OR linked to a page that explains. Don't assume context.
+- **Internal labels** (Variant A, Wave 2, v0.1) should come with a short gloss when first introduced on a page.
+- **References to other work** (research, analysis, previous decisions) must be linked to the actual Confluence page — never just mention "we analyzed X" without linking X.
 - **Balance**: don't over-explain the obvious (readers are smart, just not context-equipped). One short clause or parenthetical is usually enough. Prefer linking over inlining when the full explanation exists elsewhere.
 
-**Smell test**: if a new hire at the Lybel opens this page cold, will they understand it? If not, add one link or one half-sentence.
+**Smell test**: if a new team member opens this page cold, will they understand it? If not, add one link or one half-sentence.
 
 ### Pattern 4 — No process meta-noise. Pretend prior versions never existed.
 
 The page is the current state of thinking — not a record of how it got there. Avoid documenting your own editing process inside the page body. Specifically, **never write**:
 
-- ❌ "Substitui a versão anterior que tinha [problema]" / "Esta versão revoga a anterior" / "Reescrita após repesquisa"
-- ❌ "Era X, agora é Y" / "Mudamos de A pra B" (in the body of the page, as if the reader cared about the diff)
+- ❌ "Replaced the previous version that had [problem]" / "This version supersedes the previous" / "Rewritten after re-research"
+- ❌ "Was X, now is Y" / "Changed from A to B" (in the body of the page, as if the reader cared about the diff)
 - ❌ "v1 → v2" comparisons or any version numbering inside content
-- ❌ Apologetic notes about previous errors: "antes estava com erro factual no nome do CEO", "antes tratava em tom futuro"
-- ❌ Refactoring announcements: "esta página foi refatorada hoje", "antes era uma sub-seção, virou página própria"
+- ❌ Apologetic notes about previous errors: "the CEO name was previously wrong", "was written in future tense before"
+- ❌ Refactoring announcements: "this page was refactored today", "was a sub-section, now its own page"
 
-**Why this rule:** today's "v1 vs v2" becomes tomorrow's confusion when v3 arrives. A reader 6 months from now doesn't care that the wrong CEO name was once written here — they care if the right one is here now. **When fixing a factual error, just fix it. Pretend it never existed.** When restructuring, just restructure. Git history (or the page's own version history in Confluence) is the audit trail; the page body is the source of truth.
+**Why this rule:** today's "v1 vs v2" becomes tomorrow's confusion when v3 arrives. A reader 6 months from now doesn't care that the wrong name was once written here — they care if the right one is here now. **When fixing a factual error, just fix it. Pretend it never existed.** When restructuring, just restructure. Git history (or the page's own version history in Confluence) is the audit trail; the page body is the source of truth.
 
-**Histórico section — what to put and what NOT to put.** When a page has a "Histórico" / "Histórico da decisão" section, it records **substantive movements of the decision/state being documented** — not edits to the page itself. Use it for:
+**History section — what to put and what NOT to put.** When a page has a "History" / "Decision History" section, it records **substantive movements of the decision/state being documented** — not edits to the page itself. Use it for:
 
 - ✅ A real strategic pivot ("Decision changed from X to Y after data Z came in") — but write it from the perspective of the *decision*, not the *page*.
-- ✅ Regulatory or external events that shifted the page's conclusions ("BCB published Resolution 482/2025; we updated PSP eligibility accordingly")
+- ✅ Regulatory or external events that shifted the page's conclusions ("Authority X published Resolution Y; we updated eligibility accordingly")
 - ✅ A consolidated handoff moment ("Phase 0 closed on date X; this page archived its conclusions")
 
 Do NOT use it for:
 
-- ❌ "Refatorada hoje, estrutura simplificada" — that's an edit, not a movement
-- ❌ "Versão de manhã foi substituída pela de tarde" — same intra-day; the reader doesn't experience time as you do
-- ❌ "Adicionada seção Y / removida seção Z" — that's git history, not decision history
-- ❌ Author or model self-references — "Sonnet pesquisou", "agente de pesquisa atualizou"
+- ❌ "Refactored today, structure simplified" — that's an edit, not a movement
+- ❌ "Morning version replaced by afternoon version" — same intra-day; the reader doesn't experience time as you do
+- ❌ "Added section Y / removed section Z" — that's git history, not decision history
+- ❌ Author or model self-references — "Sonnet researched", "AI agent updated"
 
-**Smell test for Histórico entries:** if you remove the entry, does the reader lose business context they'd otherwise have to ask about? If no, delete it. Many pages don't need a Histórico section at all.
+**Smell test for History entries:** if you remove the entry, does the reader lose business context they'd otherwise have to ask about? If no, delete it. Many pages don't need a History section at all.
 
 **Smell test for the rest of the body:** read the page as if you'd never seen it before. Anything that talks *about the page itself* (its versions, its corrections, its refactorings) is noise — strip it. The page is what it says, not how it got there.
 
@@ -383,11 +382,11 @@ Ordered by preference. Always try the cheapest tool that can answer the question
 
 | Goal | First choice | Second choice | Last resort |
 |---|---|---|---|
-| Bootstrap (start of session) | `home --refresh` (one GET) | `page digest --page-id 164232` | MCP `getConfluencePage` |
+| Bootstrap (start of session) | `home --refresh` (one GET) | `page digest --page-id <HOME_ID>` | MCP `getConfluencePage` |
 | "Where do I put X?" / aliases | `home --query "X"` (cached, free) | `home --show` + read | MCP `getConfluencePage` |
 | "What's in page X?" / outline | `page digest` (~500 bytes) | `page get --section "Y" --format text` | `page get --format text` |
-| "Qual o status de X?" | `page digest` (Status field, 0 extra calls) | `page get --section "Status" --format text` | — |
-| "O que diz a seção Y de X?" | `page get --page-id X --section "Y" --format text` | `page get --format text` (whole page) | MCP `getConfluencePage(markdown)` |
+| "What's the status of X?" | `page digest` (Status field, 0 extra calls) | `page get --section "Status" --format text` | — |
+| "What does section Y of X say?" | `page get --page-id X --section "Y" --format text` | `page get --format text` (whole page) | MCP `getConfluencePage(markdown)` |
 | Find a page | `search "term"` | MCP `searchConfluenceUsingCql` | — |
 | List children of a category | `page children` | MCP `getPagesInConfluenceSpace` | — |
 | Update a page (single section) | `page apply` | `page get` + `edit` + `page upload` | MCP `getConfluencePage(adf)` + manual + `updateConfluencePage(adf)` |
@@ -407,16 +406,16 @@ Ordered by preference. Always try the cheapest tool that can answer the question
 
 **Why CLI first:** the MCP returns the full ADF body of every page (10–40 KB). The CLI returns digests (~500 bytes), single-section slices (~hundreds of bytes), TSV rows (~150 bytes per result), or one-line status payloads. Across a multi-edit session the difference is usually 10–50× in token cost.
 
-**Status convention:** Lybel page titles often start with a status emoji — 🟢 (active), 🟡 (in-progress), 🟠 (evaluating), 🔴 (blocked), 🔵 (researched), ⚪ (idle), ✅ (done). The CLI's `digest` parses these and exposes `Status: <emoji> <label>` in the text output (and `"status": "<label>"` + `"statusEmoji": "<emoji>"` in `--json`). Use this to answer "qual o status de X?" without any further reads.
+**Optional status-emoji pattern:** prefix page titles with a status emoji — 🟢 (active), 🟡 (in-progress), 🟠 (evaluating), 🔴 (blocked), 🔵 (researched), ⚪ (idle), ✅ (done) — and the CLI's `digest` parses it into a `Status: <emoji> <label>` line in text output (and `"status"` + `"statusEmoji"` fields in `--json`). Use this convention in your project if you find it useful for cheap status queries — it's not required.
 
 **Other notes:**
-- **CQL**: prefer `title ~` before `text ~`. **Always** filter by `space = "lybel"`.
+- **CQL**: prefer `title ~` before `text ~`. **Always** filter by your space key: `space = "<YOUR_SPACE>"`.
 - **Batch:** multiple reads in parallel within the same tool-call block.
 - **Macro preservation**: `page apply` and `edit` only touch the targeted section; every macro elsewhere on the page is preserved byte-for-byte. Never use `contentFormat: "markdown"` on a page with macros.
 
-## Doc types — taxonomy for the Lybel knowledge base
+## Doc types — knowledge base taxonomy
 
-Every Confluence page in the Lybel space belongs to one of five standard doc types. These types drive both the `check` filter and the `new` template generator.
+Every Confluence page belongs to one of five standard doc types. These types drive both the `check` filter and the `new` template generator.
 
 | Type | Purpose | When to create |
 |---|---|---|
@@ -432,7 +431,7 @@ Every Confluence page in the Lybel space belongs to one of five standard doc typ
 
 ```
 # 1. Check first
-confluence-docs check --title "Análise Stripe Brasil" --type reference
+confluence-docs check --title "Stripe Brazil Analysis" --type reference
 
 # Output example:
 # { "exists": false, "similar": [...], "suggestion": "create" }
@@ -442,31 +441,31 @@ confluence-docs check --title "Análise Stripe Brasil" --type reference
 
 # 3. Generate template
 confluence-docs new reference \
-  --title "Análise Stripe Brasil" \
-  --output /tmp/lybel-edit/page.md
+  --title "Stripe Brazil Analysis" \
+  --output /tmp/page.md
 
 # 4. Edit the template (fill in the blanks), then create:
 confluence-docs page create \
-  --space-id 131352 --parent-id PARENT_ID \
-  --title "Análise Stripe Brasil" \
-  --markdown /tmp/lybel-edit/page.md
+  --space-id <SPACE_ID> --parent-id <PARENT_ID> \
+  --title "Stripe Brazil Analysis" \
+  --markdown /tmp/page.md
 ```
 
 The `check` command uses trigram-based fuzzy matching (Jaccard similarity, threshold 0.7 by default). It also accepts `--tags` to filter by Confluence labels and `--threshold` to tighten or loosen the match.
 
 ## `confluence-docs km` — Knowledge Map generator
 
-Generates the Lybel KNOWLEDGE_MAP page (Confluence pageId `200441858`) from triage JSON batches produced by subagents, with optional hand-classified baseline overrides.
+Generates a KNOWLEDGE_MAP page from triage JSON batches produced by subagents, with optional hand-classified baseline overrides.
 
 ### Typical agent workflow
 
 ```
-# 1. Subagent triagem writes batch-*.json into /tmp/lybel-triage/
+# 1. Subagent triage writes batch-*.json into /tmp/km-triage/
 # 2. Consolidate and upload:
 confluence-docs km generate \
-    --input /tmp/lybel-triage \
+    --input /tmp/km-triage \
     --baseline /tmp/baseline.json \
-    --target-page-id 200441858 \
+    --target-page-id <KM_PAGE_ID> \
     --message "regenerate KM after triage" \
     --full-width
 ```
@@ -475,15 +474,15 @@ confluence-docs km generate \
 
 ```bash
 # Render to stdout only:
-confluence-docs km generate --input /tmp/lybel-triage
+confluence-docs km generate --input /tmp/km-triage
 
 # Render to file:
-confluence-docs km generate --input /tmp/lybel-triage --output /tmp/km.md
+confluence-docs km generate --input /tmp/km-triage --output /tmp/km.md
 
 # Dry-run with target page: shows size but skips upload:
 confluence-docs km generate \
-    --input /tmp/lybel-triage \
-    --target-page-id 200441858 \
+    --input /tmp/km-triage \
+    --target-page-id <KM_PAGE_ID> \
     --dry-run
 ```
 
@@ -492,13 +491,13 @@ confluence-docs km generate \
 ```json
 {
   "pages": [
-    {"pageId": "185303042", "title": "Sobre a Lybel", "tipo": "reference", "tags": []},
-    {"pageId": "187695141", "title": "Proposta fit HOJE", "tipo": "decision", "tags": ["fase-mvp"]}
+    {"pageId": "185303042", "title": "About the Project", "tipo": "reference", "tags": []},
+    {"pageId": "187695141", "title": "Current Fit Proposal", "tipo": "decision", "tags": ["phase-mvp"]}
   ]
 }
 ```
 
-Baseline entries take precedence over triage (type and title are never overridden). Triage can still **augment** baseline entries — e.g. adding `fase-final-checkout-universal` tag or a real anomaly.
+Baseline entries take precedence over triage (type and title are never overridden). Triage can still **augment** baseline entries — e.g. adding a tag or a real anomaly.
 
 ### Triage batch format (`batch-*.json` files)
 
@@ -509,7 +508,7 @@ Baseline entries take precedence over triage (type and title are never overridde
     "title": "Business Model Canvas",
     "tipo_proposto": "reference",
     "confidence": "high",
-    "tags_sugeridas": ["bmc", "estrategia"],
+    "tags_sugeridas": ["bmc", "strategy"],
     "rationale": "...",
     "anomalia": null
   }
@@ -518,9 +517,9 @@ Baseline entries take precedence over triage (type and title are never overridde
 
 ### Tag rules applied automatically
 
-- Tags with pejorative substrings (`legacy`, `obsoleto`, `desatualizad`, `pre-pivot`, `pos-pivot`, `antigo`) are removed and replaced by the canonical `fase-final-checkout-universal`.
-- Anomaly strings containing `"pre-pivot"`, `"b2b2c"`, `"pos-pivot"`, `"conteudo-desatualizado"`, etc. mark the entry with `fase-final-checkout-universal` but do NOT become real anomalies.
-- Real anomalies (shown in the review section) require: `"borderline"`, `"duplicata"`, or `"nome-desatualizado"` substrings.
+- Tags with pejorative substrings (`legacy`, `obsolete`, `outdated`, `pre-pivot`, `post-pivot`, `old`) are removed and replaced by the canonical `phase-archived`.
+- Anomaly strings containing `"pre-pivot"`, `"b2b2c"`, `"post-pivot"`, `"stale-content"`, etc. mark the entry with `phase-archived` but do NOT become real anomalies.
+- Real anomalies (shown in the review section) require: `"borderline"`, `"duplicate"`, or `"outdated-name"` substrings.
 
 ### `km classify` (stub)
 
@@ -535,13 +534,13 @@ Baseline entries take precedence over triage (type and title are never overridde
 ```bash
 # Create a full-width page
 confluence-docs page create \
-  --space-id 131352 --parent-id 164232 \
-  --title "Dashboard Financeiro" \
+  --space-id <SPACE_ID> --parent-id <HOME_ID> \
+  --title "Financial Dashboard" \
   --markdown content.md \
   --full-width
 
 # Revert an existing page to fixed-width
-confluence-docs page upload --page-id 12345 --markdown content.md --fixed-width
+confluence-docs page upload --page-id <id> --markdown content.md --fixed-width
 ```
 
 Under the hood this posts two properties (`content-appearance-draft` and `content-appearance-published`) to the page properties API after the create/update.
@@ -554,11 +553,11 @@ In any markdown file, use the `:::properties` fenced block to generate the Confl
 :::properties
 type: reference
 status: active
-owner: d.clair@novapaytech.com
+owner: user@example.com
 tags: psp, billing, recurring
 related: [[Stripe Brazil Analysis]], [[id:12345]]
-created: 2026-05-12
-updated: 2026-05-12
+created: 2026-01-01
+updated: 2026-01-01
 :::
 ```
 
@@ -582,8 +581,8 @@ Bare URL lines and `![embed](url)` trigger smart link conversion. Named links li
 ### `confluence-docs check` — duplicate detection
 
 ```bash
-confluence-docs check --title "Análise Stripe Brasil"
-confluence-docs check --title "Análise Stripe Brasil" --type reference --tags psp,concorrente
+confluence-docs check --title "Stripe Brazil Analysis"
+confluence-docs check --title "Stripe Brazil Analysis" --type reference --tags psp,competitor
 confluence-docs check --title "..." --threshold 0.8   # stricter matching
 confluence-docs check --title "..." --text            # plain-text output
 ```
@@ -593,7 +592,7 @@ JSON output:
 {
   "exists": false,
   "similar": [
-    {"id": "456", "title": "Análise Stripe (PT)", "url": "https://...", "similarity_score": 0.78}
+    {"id": "456", "title": "Stripe Analysis (EN)", "url": "https://...", "similarity_score": 0.78}
   ],
   "suggestion": "create"
 }
@@ -609,19 +608,19 @@ Generates a markdown template with a `:::properties` block and type-specific hea
 ```bash
 # Reference doc
 confluence-docs new reference \
-  --title "AbacatePay — PSP reference" \
-  --output /tmp/lybel-edit/page.md
+  --title "PaymentCo — PSP reference" \
+  --output /tmp/page.md
 
 # Decision record (supersedes another page)
 confluence-docs new decision \
-  --title "PSP Onda 1: AbacatePay" \
+  --title "PSP Wave 1: PaymentCo" \
   --supersedes 98765
 
 # How-to guide
-confluence-docs new how-to --title "Como fazer deploy no Railway"
+confluence-docs new how-to --title "How to deploy to production"
 
 # Quick capture
-confluence-docs new capture --title "Spike AbacatePay webhooks 2026-05-12"
+confluence-docs new capture --title "Spike PaymentCo webhooks 2026-05-12"
 ```
 
 Owner is read from `git config user.email`. Template includes `status: draft`, today's date for `created`/`updated`, and structured headings appropriate to the doc type.
@@ -633,26 +632,53 @@ For `decision` type, the template also includes: Alternatives Considered (table)
 - Storage XML (`:::warning`, `:::expand`, `[TOC]`) continues to work exactly as before.
 - ADF output via `adf` command is unchanged — smart links and properties are new addition.
 - `--full-width` and `--fixed-width` are additive flags; omitting them preserves the default Confluence behavior (fixed-width).
-- Full URLs always: `https://lybel.atlassian.net/wiki/spaces/lybel/pages/<id>`.
-- Concise — the team includes non-technical people.
+- Full URLs always point to your configured Confluence instance.
+- Concise — the team may include non-technical people.
 - **Confirm exact title and location** (parent + category) before creating any page.
 - Listings as bullets: `- **Title** — summary (URL)`.
 - If the search is empty, suggest 2-3 variations before giving up.
 
 ## Language
 
-**Always respond to the user in Brazilian Portuguese (pt-BR)**, regardless of this document being in English. The user (Lybel team, non-technical) expects Portuguese responses.
+**Respond to the user in the same language they write in.** Match their tone (formal/informal). If the user writes in English, respond in English; if they write in another language, respond in that language.
 
-## Locked configuration
+## Configuration
 
-- **cloudId:** `ab1dada3-b25e-40ad-9dbc-682caeea8d00`
-- **Space key:** `lybel`
-- **Space ID:** `131352` (used by `page create --space-id`)
-- **Home page ID:** `164232`
-- **Base URL:** `https://lybel.atlassian.net/wiki`
-- **Cloud subdomain:** `lybel` (CLI default — no flag needed)
+Since v0.10.0 the CLI uses two separate config files:
 
-Don't ask the user — pass these values directly to the MCP tools or CLI flags.
+- **Credentials** (`~/.config/confluence-docs/credentials`, perms `0600`): `email` + `token` only. Never read raw — use `setup --check` to validate.
+- **Config** (`~/.config/confluence-docs/config`, perms `0644`): `cloud`, `active_space_id`, `active_space_key`, `active_space_name`, `active_home_page_id`.
+
+All values are set automatically during `confluence-docs setup` (which auto-detects accessible spaces and asks the user to pick one). **Agents must not read or write these files directly.** Use the CLI commands:
+
+```
+confluence-docs setup --check          # validate everything is configured
+confluence-docs space current          # show active space
+confluence-docs space list             # list all accessible spaces
+confluence-docs space use <key>        # switch active space
+confluence-docs setup --set cloud acmecorp   # change a single config key
+```
+
+The active space provides defaults for all commands that need `--space-id` or space key (CQL search, `index`, `home`, `page create`, `check`). Commands that previously required explicit `--space-id 131352` flags now use the configured space automatically.
+
+## Space management
+
+```bash
+# List all spaces (cached 1h; shows active space with ✓)
+confluence-docs space list
+
+# Switch active space
+confluence-docs space use eng
+
+# Force cache refresh
+confluence-docs space list --refresh
+
+# JSON output
+confluence-docs space list --json
+confluence-docs space current --json
+```
+
+After `space use <key>`, all subsequent commands use the new space. The switch is persistent (written to `~/.config/confluence-docs/config`).
 
 ## Home cache lifecycle
 
@@ -661,7 +687,7 @@ The local cache at `~/.cache/confluence-docs/home.json` is shared across all Cla
 Quick reference:
 
 - **Reads** (`home --query/--show/--digest`): auto-refresh when stale (>1h) or missing.
-- **Writes** to the Home (`page apply` / `index *` on pageId 164232): auto-refresh the cache after the PUT.
+- **Writes** to the Home (`page apply` / `index *` on the Home pageId): auto-refresh the cache after the PUT.
 - **Explicit `home --refresh`**: always fetches, regardless of cache age. Use it when you know another machine just updated and you don't want to wait for the TTL.
 - **Override TTL**: `--max-age 30m` (more aggressive) or `--max-age 6h` (more relaxed) on any read command.
 
@@ -677,16 +703,16 @@ confluence-docs setup --check      # exit 0 = creds valid
 ```
 
 Exit codes for `setup --check`:
-- `0` — credentials valid → proceed
-- `1` — no credentials file → run `confluence-docs setup` interactively (or guide the user through Step 5 of `confluence-docs/cli/README.md`)
+- `0` — credentials valid AND active space configured → proceed
+- `1` — no credentials OR no active space configured → run `confluence-docs setup` interactively (or guide the user through Step 5 of `confluence-docs/cli/README.md`)
 - `2` — credentials invalid (token revoked or mistyped) → ask the user to regenerate the token at `https://id.atlassian.com/manage-profile/security/api-tokens` and re-run setup
 - `3` — network error → retry once; if it persists, surface the error to the user and fall back to MCP
 
 If the binary is absent entirely, fall back to MCP for the current request and tell the user how to install: `confluence-docs/cli/README.md` has the one-shot install URL.
 
-## Updating the skill — "atualiza a skill" / "tem versão nova?"
+## Updating the skill
 
-When the user asks to update, check, or upgrade the skill (any of: "atualiza a skill", "atualiza o confluence-docs", "tem versão nova?", "verifica se tem update", "tá na última versão?"), run:
+When the user asks to update, check, or upgrade the skill (any of: "update the skill", "update confluence-docs", "is there a new version?", "check for updates", "am I on the latest version?"), run:
 
 ```
 confluence-docs update            # download + install latest release
@@ -699,8 +725,4 @@ confluence-docs update --check    # only report whether an update is available
 - If `--check`: reports `current → latest` and exits (0 = up to date, 10 = update available).
 - Without `--check`: shells out to the public installer (install.sh on Linux/macOS, install.ps1 on Windows). The installer overwrites the binary, SKILL.md, and reference files atomically. **Credentials and the home cache are preserved across the update** — no re-setup needed.
 
-**For non-technical users:** they don't need to remember any URL. Just running `confluence-docs update` does everything. Reply in pt-BR with the result, e.g.:
-- "Já está na última versão (v0.3.3)."
-- "Atualizei de v0.3.0 → v0.3.3."
-
-**When to suggest an update proactively:** if the user reports a CLI behavior that you know was changed in a more recent release (e.g. they say "esse comando não existe" for a flag you know exists), check `confluence-docs --version` and `confluence-docs update --check` before assuming a real bug.
+**When to suggest an update proactively:** if the user reports a CLI behavior that you know was changed in a more recent release (e.g. they say "that command doesn't exist" for a flag you know exists), check `confluence-docs --version` and `confluence-docs update --check` before assuming a real bug.

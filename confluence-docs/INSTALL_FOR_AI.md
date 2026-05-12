@@ -7,7 +7,7 @@ Self-contained, low-ambiguity, deterministic exit codes. Keep it that way.
 
 ## Prerequisites
 
-- An Atlassian account with access to the target Confluence cloud (default: `lybel.atlassian.net`).
+- An Atlassian account with access to the target Confluence cloud.
 - Internet access.
 - macOS, Linux, or Windows 10+.
 
@@ -110,4 +110,4 @@ Successful output prints a digest of the home (title, headings, link count). On 
 
 ## When done
 
-Confirm the user can ask things like *"onde fica a página de governança?"* or *"cria uma ata da reunião com o Itaú"* and get a response. If something silently fails, re-run Step 4 (credentials) then Step 5 (connectivity).
+Confirm the user can ask things like *"where is the governance page?"* or *"create meeting notes for the Acme call"* and get a response. If something silently fails, re-run Step 4 (credentials) then Step 5 (connectivity).

@@ -325,6 +325,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) (int, error) 
 		return runNew(args[1:], stdin, stdout, stderr)
 	case "km":
 		return runKM(args[1:], stdin, stdout, stderr)
+	case "space":
+		return runSpace(args[1:], stdout, stderr)
 	}
 
 	fmt.Fprintln(stderr, "unknown command:", args[0])
@@ -811,6 +813,18 @@ func buildClient(cloud, email, token string, stderr io.Writer) (*adf.ConfluenceC
 		return nil, false
 	}
 	return adf.NewClient(resolvedCloud, creds), true
+}
+
+// pageWebURL constructs the Confluence web UI URL for a page using the
+// configured space key. Falls back to the client base URL + page ID if the
+// space key is not configured.
+func pageWebURL(client *adf.ConfluenceClient, pageID string) string {
+	if key, err := currentSpaceKey(); err == nil && key != "" {
+		return fmt.Sprintf("%s/spaces/%s/pages/%s", client.BaseURL(), key, pageID)
+	}
+	// Fallback: just include the page ID as a path (still a valid redirect for
+	// most Confluence Cloud installations).
+	return fmt.Sprintf("%s/pages/%s", client.BaseURL(), pageID)
 }
 
 func runPageGet(args []string, stdout, stderr io.Writer) (int, error) {
@@ -2331,7 +2345,7 @@ func runPageApply(args []string, stdout, stderr io.Writer) (int, error) {
 	// Auto-refresh the home cache if this write touched the Home page.
 	refreshHomeCacheAfterWrite(pageID, client, stderr)
 
-	url := fmt.Sprintf("%s/spaces/%s/pages/%s", client.BaseURL(), defaultCloud, pageID)
+	url := pageWebURL(client, pageID)
 	fmt.Fprintf(stdout, `{"status":"ok","pageId":%q,"title":%q,"fromVersion":%d,"toVersion":%d,"url":%q}`+"\n",
 		pageID, lastTitle, lastFromVersion, lastToVersion, url)
 	return exitOK, nil
@@ -2398,7 +2412,7 @@ func runPageApplyMulti(pageID, multiPath, message string, dryRun bool, cloud, em
 		return exitInputErr, err
 	}
 	refreshHomeCacheAfterWrite(pageID, client, stderr)
-	url := fmt.Sprintf("%s/spaces/%s/pages/%s", client.BaseURL(), defaultCloud, pageID)
+	url := pageWebURL(client, pageID)
 	fmt.Fprintf(stdout, `{"status":"ok","pageId":%q,"title":%q,"fromVersion":%d,"toVersion":%d,"opsApplied":%d,"url":%q}`+"\n",
 		pageID, title, fromV, toV, applied, url)
 	return exitOK, nil
@@ -2715,7 +2729,7 @@ func runPageRewrite(args []string, stdout, stderr io.Writer) (int, error) {
 	}
 	fmt.Fprintf(stdout, "%d sections replaced, %d add skipped, %d remove skipped\n",
 		countReports(report, "✓"), wouldAdd, wouldRemove)
-	url := fmt.Sprintf("%s/spaces/%s/pages/%s", client.BaseURL(), defaultCloud, pageID)
+	url := pageWebURL(client, pageID)
 	fmt.Fprintf(stdout, "URL: %s\n", url)
 	_ = title
 	_ = applied
@@ -3000,7 +3014,15 @@ func runSearch(args []string, stdout, stderr io.Writer) (int, error) {
 		return exitInputErr, errInvalidUsage
 	}
 	if space == "" {
-		space = defaultCloud // "lybel"
+		// Default to the configured active space key.
+		if key, keyErr := currentSpaceKey(); keyErr == nil {
+			space = key
+		}
+	}
+	if space == "" {
+		fmt.Fprintln(stderr, "search: no space specified and no active space configured")
+		fmt.Fprintln(stderr, "  use --space <key> or run `confluence-docs setup` / `space use <key>`")
+		return exitInputErr, errInvalidUsage
 	}
 	if limit == 0 {
 		limit = 10
@@ -3067,8 +3089,13 @@ func runHome(args []string, stdout, stderr io.Writer) (int, error) {
 		showDigest bool
 		query      string
 		maxAge     time.Duration = defaultMaxAge
-		pageID     string        = "164232" // Home is locked to this ID for now
+		pageID     string        // set below from config
 	)
+
+	// Default to configured home page ID (can be overridden by --page-id flag below).
+	if id, cfgErr := currentHomePageID(); cfgErr == nil {
+		pageID = id
+	}
 
 	remaining, cloud, email, token, err := parseCommonPageFlags(args)
 	if err != nil {
@@ -3148,6 +3175,10 @@ func runHome(args []string, stdout, stderr io.Writer) (int, error) {
 	// --refresh: always fetch, never short-circuit on cache freshness.
 	// The whole point of an explicit --refresh is "I know I want fresh data".
 	if refresh {
+		if pageID == "" {
+			fmt.Fprintln(stderr, "home: no home page configured — run `confluence-docs setup` or `confluence-docs space use <key>`")
+			return exitInputErr, errInvalidUsage
+		}
 		client, ok := buildClient(cloud, email, token, stderr)
 		if !ok {
 			return exitUnknownErr, nil
@@ -3186,6 +3217,10 @@ func runHome(args []string, stdout, stderr io.Writer) (int, error) {
 	}
 
 	if needRefresh {
+		if pageID == "" {
+			fmt.Fprintln(stderr, "home: no home page configured — run `confluence-docs setup` or `confluence-docs space use <key>`")
+			return exitInputErr, errInvalidUsage
+		}
 		why := "missing"
 		if cache != nil {
 			why = fmt.Sprintf("stale by %s", formatDurationCompact(cache.Age()))
@@ -3274,14 +3309,15 @@ func fetchHomeCache(client *adf.ConfluenceClient, pageID string) (*adf.HomeCache
 // path: the caller's session sees the new state immediately, without needing
 // an explicit `home --refresh`.
 //
-// No-op when pageID isn't the Home (the only page we cache today). Errors
-// are reported to stderr but don't fail the calling write — the write itself
-// already succeeded; cache freshness is best-effort.
+// No-op when pageID isn't the configured Home (the only page we cache today).
+// Errors are reported to stderr but don't fail the calling write — the write
+// itself already succeeded; cache freshness is best-effort.
 func refreshHomeCacheAfterWrite(pageID string, client *adf.ConfluenceClient, stderr io.Writer) {
-	if pageID != homePageID {
+	homeID, err := currentHomePageID()
+	if err != nil || pageID != homeID {
 		return
 	}
-	c, err := fetchHomeCache(client, homePageID)
+	c, err := fetchHomeCache(client, homeID)
 	if err != nil {
 		fmt.Fprintf(stderr, "(warning: home cache refresh after write failed: %v)\n", err)
 		return
@@ -3461,13 +3497,40 @@ func runExtractBody(args []string, stdin io.Reader, stdout, stderr io.Writer) (i
 // ── index command ──────────────────────────────────────────────────────────
 
 const (
-	homePageID    = "164232"
-	homeSpaceID   = "131352"
-	defaultCloud  = "lybel"
-	indentNone    = ""
-	indentLevel1  = "↳ "
-	indentLevel2  = "↳↳ "
+	indentNone   = ""
+	indentLevel1 = "↳ "
+	indentLevel2 = "↳↳ "
 )
+
+// configNotSetErr is the error returned when a required config value is missing.
+var errConfigNotSet = fmt.Errorf("no active space configured — run `confluence-docs setup` or `confluence-docs space use <key>`")
+
+// currentHomePageID returns the home page ID from config.
+func currentHomePageID() (string, error) {
+	cfg := adf.ReadActiveConfig()
+	if cfg.HomePageID == "" {
+		return "", errConfigNotSet
+	}
+	return cfg.HomePageID, nil
+}
+
+// currentSpaceID returns the active space ID from config.
+func currentSpaceID() (string, error) {
+	cfg := adf.ReadActiveConfig()
+	if cfg.SpaceID == "" {
+		return "", errConfigNotSet
+	}
+	return cfg.SpaceID, nil
+}
+
+// currentSpaceKey returns the active space key from config.
+func currentSpaceKey() (string, error) {
+	cfg := adf.ReadActiveConfig()
+	if cfg.SpaceKey == "" {
+		return "", errConfigNotSet
+	}
+	return cfg.SpaceKey, nil
+}
 
 // runIndex handles the `index` subcommand with verbs: add, remove, sync.
 func runIndex(args []string, stdin io.Reader, stdout, stderr io.Writer) (int, error) {
@@ -3510,10 +3573,14 @@ func loadIndexPage(inputFile string, client *adf.ConfluenceClient) (*indexPageCo
 		return &indexPageContext{doc: doc, inputFile: inputFile, pageID: ""}, nil
 	}
 
-	// Fetch from API
-	meta, err := client.GetPage(homePageID, "atlas_doc_format")
+	// Fetch from API using configured home page ID.
+	homeID, err := currentHomePageID()
 	if err != nil {
-		return nil, fmt.Errorf("fetching Home page (ID %s): %w", homePageID, err)
+		return nil, fmt.Errorf("home page not configured: %w", err)
+	}
+	meta, err := client.GetPage(homeID, "atlas_doc_format")
+	if err != nil {
+		return nil, fmt.Errorf("fetching Home page (ID %s): %w", homeID, err)
 	}
 	adfStr := meta.Body.AtlasDocFormat.Value
 	if adfStr == "" {
@@ -3523,7 +3590,7 @@ func loadIndexPage(inputFile string, client *adf.ConfluenceClient) (*indexPageCo
 	if err != nil {
 		return nil, fmt.Errorf("parsing Home page ADF: %w", err)
 	}
-	return &indexPageContext{doc: doc, inputFile: "", pageID: homePageID}, nil
+	return &indexPageContext{doc: doc, inputFile: "", pageID: homeID}, nil
 }
 
 // saveIndexPage writes the updated doc to file or uploads it via the API.
