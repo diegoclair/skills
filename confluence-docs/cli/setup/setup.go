@@ -397,12 +397,17 @@ func fetchSpaces(client httpClient, email, token, cloud string) ([]SpaceInfo, er
 		return nil, fmt.Errorf("unexpected status %d fetching spaces", resp.StatusCode)
 	}
 
+	// Confluence v2 returns the human-readable URL/CQL key in
+	// `currentActiveAlias`; the `key` field holds an internal hex hash for
+	// non-personal spaces. Prefer the alias when present (same logic as
+	// adf.ListSpaces).
 	var result struct {
 		Results []struct {
-			ID          string `json:"id"`
-			Key         string `json:"key"`
-			Name        string `json:"name"`
-			HomepageID  string `json:"homepageId"`
+			ID                 string `json:"id"`
+			Key                string `json:"key"`
+			CurrentActiveAlias string `json:"currentActiveAlias"`
+			Name               string `json:"name"`
+			HomepageID         string `json:"homepageId"`
 		} `json:"results"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
@@ -411,9 +416,13 @@ func fetchSpaces(client httpClient, email, token, cloud string) ([]SpaceInfo, er
 
 	spaces := make([]SpaceInfo, 0, len(result.Results))
 	for _, r := range result.Results {
+		key := r.CurrentActiveAlias
+		if key == "" {
+			key = r.Key
+		}
 		spaces = append(spaces, SpaceInfo{
 			ID:         r.ID,
-			Key:        r.Key,
+			Key:        key,
 			Name:       r.Name,
 			HomepageID: r.HomepageID,
 		})
@@ -719,52 +728,42 @@ func runInteractive(prefillEmail, prefillToken string, stdinRaw io.Reader, stdou
 	fmt.Fprintln(stdout, "(Press Ctrl+C any time to cancel)")
 	fmt.Fprintln(stdout)
 
-	email := prefillEmail
-	if email == "" {
-		fmt.Fprint(stdout, "Atlassian email: ")
-		var err error
-		email, err = readLine(stdin)
-		if err != nil || email == "" {
-			fmt.Fprintln(stderr, "setup cancelled")
-			return ExitNoCreds, nil
-		}
-	} else {
-		fmt.Fprintf(stdout, "Atlassian email: %s\n", email)
-	}
+	// Unified prompt pattern: when a value already exists, show it on a
+	// separate "current" line and let the user press Enter to keep, or type
+	// a new value to override. When there is no existing value, just ask
+	// directly (single line). Same UX for all three fields.
 
-	token := prefillToken
-	if token == "" {
-		fmt.Fprint(stdout, "API token: ")
-		// NOTE: golang.org/x/term would allow masked input (characters hidden).
-		// We use plain readline to avoid adding a dependency. To add masking:
-		//   import "golang.org/x/term"
-		//   byteToken, _ := term.ReadPassword(int(os.Stdin.Fd()))
-		//   token = string(byteToken)
-		var err error
-		token, err = readLine(stdin)
-		if err != nil || token == "" {
-			fmt.Fprintln(stderr, "setup cancelled")
-			return ExitNoCreds, nil
-		}
-	} else {
-		fmt.Fprintf(stdout, "API token: %s\n", maskToken(token))
-	}
-
-	// Ask for the Confluence cloud subdomain. The default is whatever
-	// resolveCloud() returns (env var or existing config file value).
-	currentCloud := resolveCloud()
-	prompt := "Confluence subdomain (e.g. 'mycompany' for mycompany.atlassian.net)"
-	if currentCloud != "" {
-		prompt = fmt.Sprintf("Confluence subdomain (e.g. 'mycompany' — press Enter to keep '%s')", currentCloud)
-	}
-	fmt.Fprintf(stdout, "%s: ", prompt)
-	cloud, err := readLine(stdin)
-	if err != nil {
+	email, ok := promptWithDefault(stdin, stdout, promptSpec{
+		Label:   "Atlassian email",
+		Current: prefillEmail,
+		Hint:    "(press Enter to keep, or type a new value)",
+	})
+	if !ok || email == "" {
 		fmt.Fprintln(stderr, "setup cancelled")
 		return ExitNoCreds, nil
 	}
-	if cloud == "" {
-		cloud = currentCloud
+
+	token, ok := promptWithDefault(stdin, stdout, promptSpec{
+		Label:      "API token",
+		Current:    prefillToken,
+		MaskCurrent: true,
+		Hint:       "(press Enter to keep, or paste a new token)",
+	})
+	if !ok || token == "" {
+		fmt.Fprintln(stderr, "setup cancelled")
+		return ExitNoCreds, nil
+	}
+
+	currentCloud := resolveCloud()
+	cloud, ok := promptWithDefault(stdin, stdout, promptSpec{
+		Label:   "Confluence subdomain",
+		Example: "e.g. 'mycompany' for mycompany.atlassian.net",
+		Current: currentCloud,
+		Hint:    "(press Enter to keep, or type a new value)",
+	})
+	if !ok {
+		fmt.Fprintln(stderr, "setup cancelled")
+		return ExitNoCreds, nil
 	}
 	if cloud == "" {
 		fmt.Fprintln(stderr, "setup cancelled — a Confluence subdomain is required")
@@ -892,6 +891,63 @@ func maskToken(token string) string {
 		return strings.Repeat("*", len(token))
 	}
 	return token[:4] + strings.Repeat("*", len(token)-4)
+}
+
+// promptSpec drives a uniform multi-line "value with default" prompt.
+type promptSpec struct {
+	Label       string // e.g. "Atlassian email"
+	Example     string // optional inline example, e.g. "e.g. 'mycompany' for ..."
+	Current     string // existing value, if any
+	MaskCurrent bool   // if true, show masked (for tokens)
+	Hint        string // e.g. "(press Enter to keep, or type a new value)"
+}
+
+// promptWithDefault renders a prompt of the form:
+//
+//	Label (Example)
+//	  current: <value>
+//	  new (Hint): _____
+//
+// or, when no current value exists:
+//
+//	Label (Example): _____
+//
+// Returns the value (current if user hit Enter, new typed value otherwise) and
+// a bool indicating success (false on read error or Ctrl+D).
+func promptWithDefault(stdin io.Reader, stdout io.Writer, spec promptSpec) (string, bool) {
+	header := spec.Label
+	if spec.Example != "" {
+		header = fmt.Sprintf("%s (%s)", spec.Label, spec.Example)
+	}
+	if spec.Current == "" {
+		// No current value — single-line prompt.
+		fmt.Fprintf(stdout, "%s: ", header)
+		val, err := readLine(stdin)
+		if err != nil {
+			return "", false
+		}
+		return val, true
+	}
+	// Has a current value — multi-line layout.
+	displayed := spec.Current
+	if spec.MaskCurrent {
+		displayed = maskToken(displayed)
+	}
+	fmt.Fprintln(stdout, header)
+	fmt.Fprintf(stdout, "  current: %s\n", displayed)
+	hint := spec.Hint
+	if hint == "" {
+		hint = "(press Enter to keep)"
+	}
+	fmt.Fprintf(stdout, "  new %s: ", hint)
+	val, err := readLine(stdin)
+	if err != nil {
+		return "", false
+	}
+	if val == "" {
+		return spec.Current, true
+	}
+	return val, true
 }
 
 // isHeadless returns true if the process appears to be running without an

@@ -1,5 +1,41 @@
 # Changelog — confluence-docs
 
+## v0.10.2 (2026-05-12) — uniform setup wizard UX + space alias in setup flow
+
+Two small UX fixes for the setup wizard after v0.10.1.
+
+### Bug 1 — inconsistent prefill UX across fields
+
+In v0.10.x the email and token prompts showed the current value inline (`Atlassian email: diego@example.com`) and skipped the input entirely, while the subdomain prompt asked "press Enter to keep 'lybel'" and accepted input. Confusing — the first two looked like display-only, the third like a normal prompt.
+
+Unified all three to the same multi-line pattern:
+
+```
+Atlassian email
+  current: diego@example.com
+  new (press Enter to keep, or type a new value): _
+
+API token
+  current: ATAT****…
+  new (press Enter to keep, or paste a new token): _
+
+Confluence subdomain (e.g. 'mycompany' for mycompany.atlassian.net)
+  current: lybel
+  new (press Enter to keep, or type a new value): _
+```
+
+Press Enter → keeps. Type → overrides. Works the same for all fields. First-time setup (no existing values) shows the simpler single-line prompt for each.
+
+### Bug 2 — setup wizard still showed the internal hash for spaces
+
+v0.10.1 fixed `space list/current` to use `currentActiveAlias` instead of the internal `key` field, but the setup wizard's `fetchAccessibleSpaces` has its own inline JSON parser that still only read `key`. So during setup the space list looked like:
+
+```
+1. Lybel (f53b318e3ee044c49c76ddaae276f180, id 131352)
+```
+
+instead of `Lybel (lybel, id 131352)`. Mirrored the v0.10.1 fix into the setup parser.
+
 ## v0.10.1 (2026-05-12) — fix space key + setup token prefill
 
 Two regressions from v0.10.0 reported by Diego right after release.
