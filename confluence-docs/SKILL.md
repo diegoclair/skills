@@ -412,6 +412,7 @@ Ordered by preference. Always try the cheapest tool that can answer the question
 - **CQL**: prefer `title ~` before `text ~`. **Always** filter by your space key: `space = "<YOUR_SPACE>"`.
 - **Batch:** multiple reads in parallel within the same tool-call block.
 - **Macro preservation**: `page apply` and `edit` only touch the targeted section; every macro elsewhere on the page is preserved byte-for-byte. Never use `contentFormat: "markdown"` on a page with macros.
+- **Always SINGLE-quote section names that may contain `$`** (currency, env-var-like patterns). Bash silently expands `$200` to `00` and `$VAR` to empty BEFORE the CLI sees the argument — failures become opaque. Example: `--section 'R$200 in pricing'` (single quotes), never `--section "R$200 in pricing"` (double quotes — bash expands inside). The CLI prints a hint when it detects the issue at error time, but prevention is cheaper.
 
 ## Doc types — knowledge base taxonomy
 
