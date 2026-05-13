@@ -33,6 +33,14 @@ When you respond to the user:
 - Keep page titles, category names, and content in whatever language they exist in Confluence
 - Only technical terms or proper nouns stay in English when the user writes in another language
 
+## ⚠️ Two non-negotiable rules (read these once, apply always)
+
+1. **Always SINGLE-quote** any argument that could contain `$` (currency like `R$200` / `US$1k`, env-var-like patterns, anything money-adjacent). Bash silently expands `$200` → `00`, `$VAR` → `""`, etc., BEFORE the CLI ever sees the value. Failures look like opaque "section not found" with no obvious cause. Single quotes (`'`) keep `$` literal; double quotes (`"`) do NOT. Examples in this doc use `'single quotes'` deliberately — copy that pattern.
+
+2. **Never use `contentFormat: "markdown"` via MCP** on a page with macros (TOC, expand, panel, status, page-properties). It silently flattens the macros and destroys structure. The CLI always handles macros correctly — prefer it.
+
+The skill emits diagnostic hints for rule 1 when violation is detected at error-time, but prevention costs nothing and saves a round-trip. Don't rely on the hint.
+
 ## Tool priority — CLI first, MCP as fallback
 
 The `confluence-docs` Go CLI talks directly to the Confluence REST API and is **always the preferred tool** for reads, writes and searches. The Atlassian MCP returns the full ADF body of every page (tens of KB), which inflates the conversation context fast. The CLI returns a small digest, a TSV row, or a one-line status — orders of magnitude cheaper.
@@ -174,12 +182,14 @@ confluence-docs page get --page-id <id> --format export_view  # rendered HTML
 
 **Never build ADF by hand, and never use `contentFormat: "markdown"` to update a page with macros** (TOC, Expand, panel). Markdown update flattens macros and silently destroys structure.
 
+⚠️ **CRITICAL: always SINGLE-quote section names that contain (or might contain) `$`.** Bash silently expands `$200` → `00`, `$VAR` → `""`, etc. BEFORE the CLI sees the argument — failures look like "section not found" with no obvious cause. This is especially common in money-related docs (R$, US$). The CLI prints a diagnostic hint when it detects this, but PREVENTION costs nothing. Examples below all use single quotes intentionally — copy that pattern.
+
 **Preferred path (single atomic command):** `confluence-docs page apply` does GET → section-edit → PUT in one shot, with automatic refetch-and-retry on 409 conflict (someone else updated mid-flight). The full ADF never enters the conversation context.
 
 ```
 # Replace a single section, preserving every macro outside it
 confluence-docs page apply --page-id <id> \
-  --replace-section "Roadmap" --fragment /tmp/new.md \
+  --replace-section 'Roadmap' --fragment /tmp/new.md \
   --message "rewrite roadmap"
 
 # Append a new section at the end
@@ -189,13 +199,13 @@ confluence-docs page apply --page-id <id> \
 
 # Insert relative to an existing heading
 confluence-docs page apply --page-id <id> \
-  --insert-after "Research" --fragment /tmp/new.md
+  --insert-after 'Research' --fragment /tmp/new.md
 
 confluence-docs page apply --page-id <id> \
-  --insert-before "FAQ" --fragment /tmp/new.md
+  --insert-before 'FAQ' --fragment /tmp/new.md
 
 # Delete a stale section
-confluence-docs page apply --page-id <id> --delete-section "Old TODO"
+confluence-docs page apply --page-id <id> --delete-section 'Old TODO'
 
 # Disambiguate when the same heading text appears at multiple levels
 confluence-docs page apply --page-id <id> \
@@ -227,7 +237,7 @@ confluence-docs page apply --page-id <id> \
 
 # Preview without writing
 confluence-docs page apply --page-id <id> \
-  --replace-section "Roadmap" --fragment frag.md --dry-run
+  --replace-section 'Roadmap' --fragment frag.md --dry-run
 ```
 
 For section replacement, include the heading line in the fragment markdown. Section bounds = heading + all following top-level nodes until the next heading of equal-or-higher level (h2 closes at h2 or h1; h3 closes at h3, h2 or h1).
