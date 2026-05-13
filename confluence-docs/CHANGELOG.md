@@ -1,5 +1,43 @@
 # Changelog — confluence-docs
 
+## v0.11.0 (2026-05-13) — major skill refactor + CLI table-match by column
+
+A focused pass to align the skill with Anthropic's official skill-creator best practices and to remove two real-world friction points observed in long edit sessions: (1) `--match-cell` silently failing when the first column wasn't unique, and (2) the lack of guidance on child-page titles that duplicate parent context. Both surfaced during a multi-hour session refactoring an "ICPs + Validation Plan" page tree (~10 child pages, multiple tables to edit).
+
+### Skill — SKILL.md slimmed and progressive disclosure deepened
+
+- **SKILL.md cut from 739 → 283 lines** to honor the official <500-line guideline. Daily-use procedures stay in the body; deep dives move to `reference/`.
+- **`description` frontmatter rewritten** in third person and made deliberately pushy (per skill-creator best practices: Claude tends to under-trigger skills). New phrasing includes "use this skill whenever... even if they don't explicitly mention 'Confluence'". Also covers the project documentation aliases (wiki, kb, knowledge base, docs).
+- **Three new reference files** with a "When to read" callout each:
+  - `reference/editorial-patterns.md` — patterns 1–4 (header, Context→Problem→Solution, clarity for outside readers, no process meta-noise). Moved from SKILL.md body.
+  - `reference/features.md` — full-width pages, `:::properties` macro, Smart Link embeds, `check`, `new`, `km` (Knowledge Map). Moved from SKILL.md body.
+  - `reference/configuration.md` — credentials, space management, home cache lifecycle contract, CLI installation check + exit codes. Moved from SKILL.md body.
+- **`reference/doc-types.md` gained** a Table of Contents (large reference file >300 lines, official skill-creator recommendation) and a new sub-section **"Child page titles — don't duplicate parent context"** with ❌/✅ examples for ICP / Decision / Partner / Competitor parents. Real-world driver: a session created child pages like "ICP — Personal trainer autonomous solo" under a parent already named "ICPs + Validation Plan"; the duplication wasted sidebar space and felt redundant.
+- **`reference/workflows.md` gained** a TOC for the same reason.
+- **`reference/operations-matrix.md`** (NEW) — CLI subcommand × constraint × fail mode × workaround. Centralizes the gotchas not visible from `--help`: `--match-cell` always matching the first column (mitigated this release by the new `--match-col` flag), shell `$` expansion in section names, when to use `--table-update-cell` vs `--table-update-row` vs `--replace-section`, and the new "Title patterns for child pages" rule from a CLI-operator angle.
+- **SKILL.md body cross-references** the new reference files explicitly with "When to read" context (matching the skill-creator pattern of "tell Claude what's there and when to load it", not just `see X`).
+
+### CLI — match by any column + row reorder
+
+- **New flags `--match-col COL_NAME` and `--match-value VALUE`** on all four mutating table operations (`--table-update-cell`, `--table-update-row`, `--table-remove-row`, `--table-add-row` with `--if-missing`). When set, the row match runs against the named column (header text from the first table row) instead of column 1. Eliminates the long-standing limitation where tables with numeric rank or repeating IDs in column 1 couldn't be edited surgically.
+- **New operation `--table-move-row "Heading" [match flags] --position N`** reorders a row inside its table without rewriting the section. Position is 1-indexed across data rows (the header at row 0 is never moved); out-of-range positions clamp to the boundary rather than erroring. Pairs with either `--match-cell` or `--match-col`/`--match-value`. Real-world use: after updating a row's score, move it to the position the new score deserves — surgical reorder instead of replacing the whole section.
+- **`--match-cell` continues to work unchanged** (backward compatible — defaults to column-1 match). Mutually exclusive with `--match-col` / `--match-value` (validation rejects both at once).
+- **Descriptive error** when `--match-col` references a column not found in the table: lists available headers in the error message, mirroring the `sectionNotFoundError` pattern.
+- **Documentation updated** in `reference/operations-matrix.md` with examples and decision-matrix entries for all new flags.
+- **Token-cost win in practice:** a real edit chain that previously required replacing an entire section (≈ 3 KB upload) now requires a single `--table-move-row` or `--table-update-cell` call (≈ 400 B upload + ≈ 150 B status response). Compared to going through the Atlassian MCP directly (which would fetch and re-upload the full ADF of the page — typically 25–40 KB), the savings are roughly 60–100× on bytes-in-conversation for fine-grained edits.
+
+### Why this version is 0.11 and not 0.10.4
+
+The SKILL.md refactor, the description rewrite (which changes the triggering surface), the new reference files, and the new CLI flags together amount to a structural release rather than a patch. The contracts (CLI flags, frontmatter description, reference file paths) change such that consumers of the skill should re-read it. No installed credentials or cached data are affected — install/upgrade is non-destructive.
+
+### Migration notes
+
+- **Agents that already loaded `SKILL.md`** in a long-lived session pick up the slimmer version on next session start; no action needed during the current session.
+- **Custom scripts that called `--match-cell`** keep working unchanged. To opt into column-name matching, add `--match-col NAME --match-value VAL` instead of `--match-cell VAL`.
+- **Sub-skill paths**: agents referencing files inside `reference/` should expect `editorial-patterns.md`, `features.md`, `configuration.md`, and `operations-matrix.md` to exist; the previous monolithic SKILL.md sections by the same names no longer carry the full content.
+
+---
+
 ## v0.10.3 (2026-05-12) — shell `$` expansion hint applied uniformly
 
 The friction note #11 ("Shell `$` in section names breaks silently") had been partially fixed in an earlier release: `sectionNotFoundError` in `adf/table_edit.go` embeds a helpful hint in the error message when a heading contains `$` but the user's input doesn't. That helper was only used by table operations and `DeleteSection`. The other section operations — `ReplaceSection`, `InsertAfter`, `InsertBefore`, `SectionContent` (used by `page get --section`) — still emitted a bare `section not found: %q` error, no heading list, no hint.

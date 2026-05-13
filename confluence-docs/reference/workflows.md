@@ -8,6 +8,18 @@ This file defines deterministic flows for the universal actions the agent perfor
 - **`cloudId`, `spaceId`, `parentId` come from the credentials file + the project's Home page** — never hardcoded here.
 - **PageIds of parent pages** are resolved from your Home (via `home --query` or `home --show`) before any action that requires one.
 
+## Contents
+
+- [Workflow 0 — Bootstrap (always run at session start)](#workflow-0--bootstrap-always-run-at-session-start)
+- [Workflow 1 — Search](#workflow-1--search)
+- [Workflow 2 — Read a page](#workflow-2--read-a-page)
+- [Workflow 3 — Create a new page](#workflow-3--create-a-new-page)
+- [Workflow 4 — Update an existing page](#workflow-4--update-an-existing-page)
+- [Workflow 5 — Status](#workflow-5--status)
+- [Workflow 6 — Delete (soft) a page](#workflow-6--delete-soft-a-page)
+- [Workflow 7 — Regenerate the Knowledge Map](#workflow-7--regenerate-the-knowledge-map)
+- [Cross-cutting execution rules](#cross-cutting-execution-rules)
+
 ---
 
 ## Workflow 0 — Bootstrap (always run at session start)

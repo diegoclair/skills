@@ -573,6 +573,190 @@ func TestPageApply_TableRemoveRow_RequiresMatchCell(t *testing.T) {
 	}
 }
 
+// rankTableDocJSON returns an ADF doc string for a table whose first column
+// is a non-unique rank — i.e. --match-cell against the first column would be
+// ambiguous and column-based match is required.
+func rankTableDocJSON() string {
+	return `{"type":"doc","attrs":{"version":1},"content":[` +
+		`{"type":"heading","attrs":{"level":2},"content":[{"type":"text","text":"ICPs"}]},` +
+		`{"type":"table","attrs":{"isNumberColumnEnabled":false,"layout":"default"},"content":[` +
+		`{"type":"tableRow","content":[` +
+		`{"type":"tableHeader","content":[{"type":"paragraph","content":[{"type":"text","text":"Rank"}]}]},` +
+		`{"type":"tableHeader","content":[{"type":"paragraph","content":[{"type":"text","text":"ICP"}]}]},` +
+		`{"type":"tableHeader","content":[{"type":"paragraph","content":[{"type":"text","text":"Score"}]}]}` +
+		`]},` +
+		`{"type":"tableRow","content":[` +
+		`{"type":"tableCell","content":[{"type":"paragraph","content":[{"type":"text","text":"1"}]}]},` +
+		`{"type":"tableCell","content":[{"type":"paragraph","content":[{"type":"text","text":"Personal"}]}]},` +
+		`{"type":"tableCell","content":[{"type":"paragraph","content":[{"type":"text","text":"4.1"}]}]}` +
+		`]},` +
+		`{"type":"tableRow","content":[` +
+		`{"type":"tableCell","content":[{"type":"paragraph","content":[{"type":"text","text":"3"}]}]},` +
+		`{"type":"tableCell","content":[{"type":"paragraph","content":[{"type":"text","text":"Lash designer"}]}]},` +
+		`{"type":"tableCell","content":[{"type":"paragraph","content":[{"type":"text","text":"2.4"}]}]}` +
+		`]}` +
+		`]}` +
+		`]}`
+}
+
+func TestEdit_TableUpdateCell_ByMatchCol(t *testing.T) {
+	dir := t.TempDir()
+	docPath := filepath.Join(dir, "doc.json")
+	os.WriteFile(docPath, []byte(rankTableDocJSON()), 0644)
+
+	out, errOut, code := runCLI(t, "edit", "--input", docPath,
+		"--table-update-cell", "ICPs",
+		"--match-col", "ICP", "--match-value", "Lash designer",
+		"--col-name", "Score", "--value", "5.0")
+	if code != 0 {
+		t.Fatalf("want exit 0, got %d\nstderr: %s", code, errOut)
+	}
+	if !strings.Contains(out, "5.0") {
+		t.Errorf("expected new score 5.0 in output: %s", out)
+	}
+	// 4.1 (Personal Score) must still be there.
+	if !strings.Contains(out, "4.1") {
+		t.Errorf("Personal score 4.1 should be preserved: %s", out)
+	}
+	// Old 2.4 should be gone.
+	if strings.Contains(out, "2.4") {
+		t.Errorf("old Lash score 2.4 should be replaced: %s", out)
+	}
+}
+
+func TestEdit_TableUpdateRow_ByMatchCol(t *testing.T) {
+	dir := t.TempDir()
+	docPath := filepath.Join(dir, "doc.json")
+	os.WriteFile(docPath, []byte(rankTableDocJSON()), 0644)
+
+	out, errOut, code := runCLI(t, "edit", "--input", docPath,
+		"--table-update-row", "ICPs",
+		"--match-col", "ICP", "--match-value", "Lash designer",
+		"--row", "3|Lash designer (validated)|3.0")
+	if code != 0 {
+		t.Fatalf("want exit 0, got %d\nstderr: %s", code, errOut)
+	}
+	if !strings.Contains(out, "validated") {
+		t.Errorf("expected 'validated' in updated row: %s", out)
+	}
+}
+
+func TestEdit_TableRemoveRow_ByMatchCol(t *testing.T) {
+	dir := t.TempDir()
+	docPath := filepath.Join(dir, "doc.json")
+	os.WriteFile(docPath, []byte(rankTableDocJSON()), 0644)
+
+	out, errOut, code := runCLI(t, "edit", "--input", docPath,
+		"--table-remove-row", "ICPs",
+		"--match-col", "ICP", "--match-value", "Lash designer")
+	if code != 0 {
+		t.Fatalf("want exit 0, got %d\nstderr: %s", code, errOut)
+	}
+	if strings.Contains(out, "Lash designer") {
+		t.Errorf("Lash row should be removed: %s", out)
+	}
+	if !strings.Contains(out, "Personal") {
+		t.Errorf("Personal row should remain: %s", out)
+	}
+}
+
+func TestEdit_TableMatch_UnknownColumn(t *testing.T) {
+	dir := t.TempDir()
+	docPath := filepath.Join(dir, "doc.json")
+	os.WriteFile(docPath, []byte(rankTableDocJSON()), 0644)
+
+	_, errOut, code := runCLI(t, "edit", "--input", docPath,
+		"--table-update-cell", "ICPs",
+		"--match-col", "Inexistente", "--match-value", "Lash designer",
+		"--col-name", "Score", "--value", "5.0")
+	if code == 0 {
+		t.Fatal("expected non-zero exit for unknown match column")
+	}
+	if !strings.Contains(errOut, "Inexistente") {
+		t.Errorf("expected unknown column name in error: %s", errOut)
+	}
+	// Error should list available columns to help the user recover.
+	for _, h := range []string{"Rank", "ICP", "Score"} {
+		if !strings.Contains(errOut, h) {
+			t.Errorf("expected available column %q in error: %s", h, errOut)
+		}
+	}
+}
+
+func TestPageApply_TableMatch_MutuallyExclusive(t *testing.T) {
+	_, errOut, code := runCLI(t, "page", "apply", "--page-id", "123",
+		"--table-update-cell", "ICPs",
+		"--match-cell", "Lash designer",
+		"--match-col", "ICP", "--match-value", "Lash designer",
+		"--col-name", "Score", "--value", "5.0")
+	if code == 0 {
+		t.Fatal("expected non-zero exit when --match-cell and --match-col both passed")
+	}
+	if !strings.Contains(errOut, "mutually exclusive") {
+		t.Errorf("expected mutual-exclusivity message: %s", errOut)
+	}
+}
+
+func TestPageApply_TableMatch_PartialColFlags(t *testing.T) {
+	// --match-col without --match-value
+	_, errOut, code := runCLI(t, "page", "apply", "--page-id", "123",
+		"--table-update-cell", "ICPs",
+		"--match-col", "ICP",
+		"--col-name", "Score", "--value", "5.0")
+	if code == 0 {
+		t.Fatal("expected non-zero exit when --match-col passed without --match-value")
+	}
+	if !strings.Contains(errOut, "--match-value") || !strings.Contains(errOut, "--match-col") {
+		t.Errorf("expected error mentioning both flags: %s", errOut)
+	}
+
+	// --match-value without --match-col
+	_, errOut, code = runCLI(t, "page", "apply", "--page-id", "123",
+		"--table-update-cell", "ICPs",
+		"--match-value", "Lash designer",
+		"--col-name", "Score", "--value", "5.0")
+	if code == 0 {
+		t.Fatal("expected non-zero exit when --match-value passed without --match-col")
+	}
+}
+
+func TestEdit_TableMatchCell_BackwardCompat(t *testing.T) {
+	// Build a doc whose first column is a unique name (the classic case).
+	dir := t.TempDir()
+	doc := `{"type":"doc","attrs":{"version":1},"content":[` +
+		`{"type":"heading","attrs":{"level":2},"content":[{"type":"text","text":"Index"}]},` +
+		`{"type":"table","attrs":{"isNumberColumnEnabled":false,"layout":"default"},"content":[` +
+		`{"type":"tableRow","content":[` +
+		`{"type":"tableHeader","content":[{"type":"paragraph","content":[{"type":"text","text":"Page"}]}]},` +
+		`{"type":"tableHeader","content":[{"type":"paragraph","content":[{"type":"text","text":"pageId"}]}]}` +
+		`]},` +
+		`{"type":"tableRow","content":[` +
+		`{"type":"tableCell","content":[{"type":"paragraph","content":[{"type":"text","text":"Home"}]}]},` +
+		`{"type":"tableCell","content":[{"type":"paragraph","content":[{"type":"text","text":"164232"}]}]}` +
+		`]},` +
+		`{"type":"tableRow","content":[` +
+		`{"type":"tableCell","content":[{"type":"paragraph","content":[{"type":"text","text":"Roadmap"}]}]},` +
+		`{"type":"tableCell","content":[{"type":"paragraph","content":[{"type":"text","text":"222"}]}]}` +
+		`]}` +
+		`]}` +
+		`]}`
+	docPath := filepath.Join(dir, "doc.json")
+	os.WriteFile(docPath, []byte(doc), 0644)
+
+	out, errOut, code := runCLI(t, "edit", "--input", docPath,
+		"--table-update-cell", "Index", "--match-cell", "Home",
+		"--col-name", "pageId", "--value", "999")
+	if code != 0 {
+		t.Fatalf("want exit 0, got %d\nstderr: %s", code, errOut)
+	}
+	if !strings.Contains(out, "999") {
+		t.Errorf("expected updated pageId 999: %s", out)
+	}
+	if !strings.Contains(out, "222") {
+		t.Errorf("Roadmap pageId 222 should be untouched: %s", out)
+	}
+}
+
 func TestHome_HelpFlag(t *testing.T) {
 	out, _, code := runCLI(t, "home", "--help")
 	if code != 0 {

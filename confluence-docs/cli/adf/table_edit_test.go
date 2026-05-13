@@ -7,7 +7,7 @@ import (
 
 func TestTableUpdateRow_Replaces(t *testing.T) {
 	doc := tableDoc()
-	updated, err := TableUpdateRow(doc, "Sócios", 0, "Diego", "Diego|999")
+	updated, err := TableUpdateRow(doc, "Sócios", 0, FirstCellMatch("Diego"), "Diego|999")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -26,7 +26,7 @@ func TestTableUpdateRow_Replaces(t *testing.T) {
 
 func TestTableUpdateRow_NoMatch(t *testing.T) {
 	doc := tableDoc()
-	_, err := TableUpdateRow(doc, "Sócios", 0, "Carolina", "Carolina|111")
+	_, err := TableUpdateRow(doc, "Sócios", 0, FirstCellMatch("Carolina"), "Carolina|111")
 	if err == nil {
 		t.Fatalf("expected error for missing row")
 	}
@@ -37,7 +37,7 @@ func TestTableUpdateRow_NoMatch(t *testing.T) {
 
 func TestTableUpdateCell_ByColName(t *testing.T) {
 	doc := tableDoc()
-	updated, err := TableUpdateCell(doc, "Sócios", 0, "Diego", "pageId", "abc")
+	updated, err := TableUpdateCell(doc, "Sócios", 0, FirstCellMatch("Diego"), "pageId", "abc")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -53,7 +53,7 @@ func TestTableUpdateCell_ByColName(t *testing.T) {
 
 func TestTableUpdateCell_UnknownColumn(t *testing.T) {
 	doc := tableDoc()
-	_, err := TableUpdateCell(doc, "Sócios", 0, "Diego", "Inexistente", "abc")
+	_, err := TableUpdateCell(doc, "Sócios", 0, FirstCellMatch("Diego"), "Inexistente", "abc")
 	if err == nil {
 		t.Fatalf("expected error for unknown column")
 	}
@@ -116,7 +116,7 @@ func tableDoc() Node {
 
 func TestTableAddRow_Append(t *testing.T) {
 	doc := tableDoc()
-	updated, existed, err := TableAddRow(doc, "Sócios", 0, "Carolina|456", "", false)
+	updated, existed, err := TableAddRow(doc, "Sócios", 0, "Carolina|456", "", false, MatchSpec{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestTableAddRow_Append(t *testing.T) {
 func TestTableAddRow_AfterRow(t *testing.T) {
 	doc := tableDoc()
 	// The Sócios table has rows: header, Diego. Insert after the header row.
-	updated, _, err := TableAddRow(doc, "Sócios", 0, "Carolina|456", "Página", false)
+	updated, _, err := TableAddRow(doc, "Sócios", 0, "Carolina|456", "Página", false, MatchSpec{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -162,7 +162,7 @@ func TestTableAddRow_AfterRow(t *testing.T) {
 func TestTableAddRow_IfMissing_NoOp(t *testing.T) {
 	doc := tableDoc()
 	// "Diego" already exists in first cell
-	updated, existed, err := TableAddRow(doc, "Sócios", 0, "Diego|999", "", true)
+	updated, existed, err := TableAddRow(doc, "Sócios", 0, "Diego|999", "", true, MatchSpec{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -191,7 +191,7 @@ func TestTableAddRow_AtLevel(t *testing.T) {
 		),
 	)
 	// Target the h3 "Index"
-	updated, _, err := TableAddRow(doc, "Index", 3, "newrow|val", "", false)
+	updated, _, err := TableAddRow(doc, "Index", 3, "newrow|val", "", false, MatchSpec{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -207,7 +207,7 @@ func TestTableAddRow_AtLevel(t *testing.T) {
 
 func TestTableRemoveRow(t *testing.T) {
 	doc := tableDoc()
-	updated, err := TableRemoveRow(doc, "Sócios", 0, "Diego")
+	updated, err := TableRemoveRow(doc, "Sócios", 0, FirstCellMatch("Diego"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -219,7 +219,7 @@ func TestTableRemoveRow(t *testing.T) {
 
 func TestTableRemoveRow_NotFound(t *testing.T) {
 	doc := tableDoc()
-	_, err := TableRemoveRow(doc, "Sócios", 0, "Nonexistent")
+	_, err := TableRemoveRow(doc, "Sócios", 0, FirstCellMatch("Nonexistent"))
 	if err == nil {
 		t.Fatal("expected error for missing row, got nil")
 	}
@@ -289,6 +289,149 @@ func TestSectionNotFoundError_ListsHeadings(t *testing.T) {
 	}
 }
 
+// rankTableDoc builds a doc where the first column is a non-unique rank, so
+// the legacy first-cell match can't distinguish between rows.
+//
+//	## ICPs
+//	| Rank | ICP             | Score |
+//	|  1   | Personal        | 4.1   |
+//	|  2   | Psicólogo       | 3.8   |
+//	|  3   | Lash designer   | 2.4   |
+func rankTableDoc() Node {
+	return Doc(
+		Heading(2, Text("ICPs")),
+		Table(
+			TableRow(
+				TableHeader(Paragraph(Text("Rank"))),
+				TableHeader(Paragraph(Text("ICP"))),
+				TableHeader(Paragraph(Text("Score"))),
+			),
+			TableRow(
+				TableCell(Paragraph(Text("1"))),
+				TableCell(Paragraph(Text("Personal"))),
+				TableCell(Paragraph(Text("4.1"))),
+			),
+			TableRow(
+				TableCell(Paragraph(Text("2"))),
+				TableCell(Paragraph(Text("Psicólogo"))),
+				TableCell(Paragraph(Text("3.8"))),
+			),
+			TableRow(
+				TableCell(Paragraph(Text("3"))),
+				TableCell(Paragraph(Text("Lash designer"))),
+				TableCell(Paragraph(Text("2.4"))),
+			),
+		),
+	)
+}
+
+func TestTableUpdateCell_ByMatchCol(t *testing.T) {
+	doc := rankTableDoc()
+	// Match by the "ICP" column and update the "Score" column.
+	updated, err := TableUpdateCell(doc, "ICPs", 0,
+		MatchSpec{Col: "ICP", Value: "Lash designer"}, "Score", "5.0")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	table := updated.Content[1]
+	// Lash row is the 4th (index 3).
+	row := table.Content[3]
+	if cellText(row.Content[2]) != "5.0" {
+		t.Errorf("want Score=5.0, got %q", cellText(row.Content[2]))
+	}
+	// Other rows must be untouched.
+	if cellText(table.Content[1].Content[2]) != "4.1" {
+		t.Errorf("Personal Score should stay 4.1, got %q", cellText(table.Content[1].Content[2]))
+	}
+}
+
+func TestTableUpdateRow_ByMatchCol(t *testing.T) {
+	doc := rankTableDoc()
+	updated, err := TableUpdateRow(doc, "ICPs", 0,
+		MatchSpec{Col: "ICP", Value: "Psicólogo"}, "2|Psicólogo (atualizado)|3.9")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	table := updated.Content[1]
+	row := table.Content[2]
+	if cellText(row.Content[1]) != "Psicólogo (atualizado)" {
+		t.Errorf("want ICP cell updated, got %q", cellText(row.Content[1]))
+	}
+	if cellText(row.Content[2]) != "3.9" {
+		t.Errorf("want Score=3.9, got %q", cellText(row.Content[2]))
+	}
+}
+
+func TestTableRemoveRow_ByMatchCol(t *testing.T) {
+	doc := rankTableDoc()
+	updated, err := TableRemoveRow(doc, "ICPs", 0,
+		MatchSpec{Col: "ICP", Value: "Lash designer"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	table := updated.Content[1]
+	// 4 rows (header + 3 data) -> 3 rows after removal.
+	if len(table.Content) != 3 {
+		t.Fatalf("want 3 rows after removal, got %d", len(table.Content))
+	}
+	for _, row := range table.Content {
+		if strings.Contains(cellText(row.Content[1]), "Lash") {
+			t.Errorf("Lash row should be gone, still present: %s", cellText(row.Content[1]))
+		}
+	}
+}
+
+func TestTableUpdateCell_MatchCol_UnknownColumn(t *testing.T) {
+	doc := rankTableDoc()
+	_, err := TableUpdateCell(doc, "ICPs", 0,
+		MatchSpec{Col: "Inexistente", Value: "Lash designer"}, "Score", "5.0")
+	if err == nil {
+		t.Fatal("expected error for unknown match column")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "Inexistente") {
+		t.Errorf("error should mention the missing column: %v", err)
+	}
+	for _, h := range []string{"Rank", "ICP", "Score"} {
+		if !strings.Contains(msg, h) {
+			t.Errorf("error should list available column %q: %v", h, err)
+		}
+	}
+}
+
+func TestTableUpdateRow_MatchCol_NoMatch(t *testing.T) {
+	doc := rankTableDoc()
+	_, err := TableUpdateRow(doc, "ICPs", 0,
+		MatchSpec{Col: "ICP", Value: "Nonexistent"}, "9|Nonexistent|0.0")
+	if err == nil {
+		t.Fatal("expected error when no row matches the column value")
+	}
+	if !strings.Contains(err.Error(), "Nonexistent") {
+		t.Errorf("error should mention the search value: %v", err)
+	}
+	if !strings.Contains(err.Error(), "ICP") {
+		t.Errorf("error should mention the column name: %v", err)
+	}
+}
+
+func TestTableAddRow_IfMissing_ByMatchCol(t *testing.T) {
+	doc := rankTableDoc()
+	// "Lash designer" already exists in column "ICP" — should be a no-op
+	// even though the first-cell rank ("4") is unique.
+	updated, existed, err := TableAddRow(doc, "ICPs", 0, "4|Lash designer|9.9", "", true,
+		MatchSpec{Col: "ICP", Value: "Lash designer"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !existed {
+		t.Fatal("expected existed=true when matching column already has the value")
+	}
+	// Doc untouched.
+	if len(updated.Content[1].Content) != 4 {
+		t.Errorf("table should be unchanged (4 rows), got %d", len(updated.Content[1].Content))
+	}
+}
+
 func TestReplaceSectionAtLevel(t *testing.T) {
 	doc := Doc(
 		Heading(2, Text("Ops")),
@@ -311,5 +454,69 @@ func TestReplaceSectionAtLevel(t *testing.T) {
 	// h3 should be replaced
 	if headingText(updated.Content[2]) != "Ops v2" {
 		t.Errorf("h3 heading not replaced: %q", headingText(updated.Content[2]))
+	}
+}
+
+func TestTableMoveRow_ByPosition(t *testing.T) {
+	doc := rankTableDoc()
+	// Move "Lash designer" (currently row 3, last data row) to position 1
+	// (immediately below the header).
+	updated, err := TableMoveRow(doc, "ICPs", 0,
+		MatchSpec{Col: "ICP", Value: "Lash designer"}, 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	table := updated.Content[1]
+	if len(table.Content) != 4 {
+		t.Fatalf("table should still have 4 rows (header + 3 data), got %d", len(table.Content))
+	}
+	// Row 0 = header, row 1 = should be Lash now
+	if got := cellText(table.Content[1].Content[1]); !strings.Contains(got, "Lash designer") {
+		t.Errorf("expected Lash designer at position 1, got %q", got)
+	}
+	// Row 2 should be Personal (was 1)
+	if got := cellText(table.Content[2].Content[1]); !strings.Contains(got, "Personal") {
+		t.Errorf("expected Personal at position 2, got %q", got)
+	}
+	// Row 3 should be Psicólogo (was 2)
+	if got := cellText(table.Content[3].Content[1]); !strings.Contains(got, "Psicólogo") {
+		t.Errorf("expected Psicólogo at position 3, got %q", got)
+	}
+}
+
+func TestTableMoveRow_PositionClamp(t *testing.T) {
+	doc := rankTableDoc()
+	// Asking for position 999 should clamp to the last data row.
+	updated, err := TableMoveRow(doc, "ICPs", 0,
+		MatchSpec{Col: "ICP", Value: "Personal"}, 999)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	table := updated.Content[1]
+	// Personal should be at position 3 (last data row, idx 3 in full slice).
+	if got := cellText(table.Content[3].Content[1]); !strings.Contains(got, "Personal") {
+		t.Errorf("expected Personal at last position after clamp, got %q", got)
+	}
+}
+
+func TestTableMoveRow_HeaderRefused(t *testing.T) {
+	doc := rankTableDoc()
+	// Try to move the header row by matching its first cell "Rank".
+	_, err := TableMoveRow(doc, "ICPs", 0,
+		FirstCellMatch("Rank"), 2)
+	if err == nil {
+		t.Fatal("expected error when targeting the header row, got nil")
+	}
+	if !strings.Contains(err.Error(), "header") {
+		t.Errorf("error should mention header row: %v", err)
+	}
+}
+
+func TestTableMoveRow_NoMatch(t *testing.T) {
+	doc := rankTableDoc()
+	_, err := TableMoveRow(doc, "ICPs", 0,
+		MatchSpec{Col: "ICP", Value: "Nonexistent"}, 1)
+	if err == nil {
+		t.Fatal("expected error for non-existent value, got nil")
 	}
 }

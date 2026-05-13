@@ -18,11 +18,29 @@ Projects MAY extend or override this with their own editorial guide (e.g., `docs
 
 ---
 
+## Contents
+
+- [TL;DR](#tldr)
+- [Section 1 — Principles: Why this standard exists](#section-1--principles-why-this-standard-exists)
+- [Section 2 — The 5 doc types](#section-2--the-5-doc-types-definitions-structure-and-boundaries)
+- [Section 3 — Required frontmatter](#section-3--required-frontmatter-full-specification)
+- [Section 4 — Page structure: progressive disclosure](#section-4--page-structure-progressive-disclosure)
+- [Section 4.5 — Chunking-friendly writing rules](#section-45--chunking-friendly-writing-rules)
+- [Section 5 — Naming Convention: Slugs and Page Titles](#section-5--naming-convention-slugs-and-page-titles)
+- [Section 6 — Cross-Linking: No Page Is Born Alone](#section-6--cross-linking-no-page-is-born-alone)
+- [Section 7 — Decision Immutability: The Hard Rule](#section-7--decision-immutability-the-hard-rule)
+- [Section 8 — No Process Noise in the Doc Body](#section-8--no-process-noise-in-the-doc-body)
+- [Section 9 — Anti-patterns: what never to do](#section-9--anti-patterns-what-never-to-do)
+- [Section 10 — How the skill consumes this file](#section-10--how-the-skill-consumes-this-file)
+
+---
+
 ## TL;DR
 
 - Every page has mandatory frontmatter, a TL;DR if > 300 words, and at least 1 incoming link.
 - There are 5 doc types: `reference`, `decision`, `explanation`, `how-to`, `capture`.
 - Decisions with `status: accepted` are immutable — to change one, supersede it with a new doc.
+- Full principles in Section 1; the 5-rule summary lives there.
 - The skill reads this file as its canonical contract; no template logic is hardcoded in the skill binary.
 
 ---
@@ -220,7 +238,9 @@ Every page follows this order. No exceptions.
 4. **Body** — Type-specific sections (see Section 2). Self-contained paragraphs.
 5. **Appendix** (optional) — Inside an `expand` macro (Confluence) or `<details>` block (Markdown). Raw data, entity version history, screenshots, call transcripts.
 
-### Chunking-friendly writing rules
+---
+
+## Section 4.5 — Chunking-friendly writing rules
 
 These rules ensure an AI agent can answer from an isolated chunk without needing the full document. They are based on retrieval benchmarks showing a 30–40% precision drop when chunks depend on context from earlier sections.
 
@@ -228,6 +248,7 @@ These rules ensure an AI agent can answer from an isolated chunk without needing
 - **Paragraphs of 3–5 sentences, one idea per paragraph.** No "as seen above" or "as mentioned earlier."
 - **Complete tables within a single section.** Never split a table across sections or pages — the model loses the header-to-row relationship.
 - **No relative cross-references.** Never "see the previous point" or "in the next section." Reference by full section title or explicit link.
+- **Self-contained code blocks.** Don't write "modify the example above"; restate the snippet so the chunk stands alone.
 
 ---
 
@@ -254,6 +275,25 @@ These rules ensure an AI agent can answer from an isolated chunk without needing
 - Visible title (Confluence page title or `# H1` in Git): may use capitalization, colons, and punctuation.
 - The slug is used as the internal page identifier, Git filename, and value in `related` fields.
 - The type in the slug must match the `type` field in the frontmatter exactly.
+
+### Child page titles — don't duplicate parent context
+
+When creating a **child page**, the Confluence sidebar already shows the parent breadcrumb. Repeating the parent's prefix in the child title wastes visual space and is read as redundancy when the user navigates.
+
+| Parent | ❌ Bad child title | ✅ Good child title |
+|---|---|---|
+| `ICPs + Validation Plan` | `ICP — Personal trainer autonomous solo` | `Personal trainer autonomous solo` |
+| `Decisions` | `Decision: Payment Provider Selection` | `Payment Provider Selection` |
+| `Partners` | `Partner: Acme Corp` | `Acme Corp` |
+| `Competitors` | `Competitor — Stripe Brazil` | `Stripe Brazil` |
+
+**Rule of thumb:** read the title alongside the parent breadcrumb. If you see `Parent ▸ Type X — Title X`, the `Type X —` is redundant — drop it from the visible title.
+
+**Slug vs title:** the slug (Section 5 above) **keeps** the type prefix (`decision-payment-provider-selection`) because slugs need to be globally unique. Drop the prefix only from the **visible title**, not from the slug — they have different jobs.
+
+**Exception:** when the prefix carries information the parent doesn't supply (e.g. an ADR that may be reparented to a generic `Decisions` archive), keep it. When in doubt, drop the prefix — you can always add it later if discovery suffers.
+
+See also: [operations-matrix.md § Title patterns for child pages](operations-matrix.md#title-patterns-for-child-pages) for the same rule from the CLI/operations angle.
 
 ---
 

@@ -23,8 +23,8 @@ import (
 )
 
 // version is injected at build time via -ldflags "-X main.version=..."
-// Falls back to v0.8.0 when not set via ldflags (dev builds).
-var version = "v0.8.0"
+// Falls back to the source-tree version when not set via ldflags (dev builds).
+var version = "v0.11.0"
 
 const helpText = `confluence-docs — Confluence ADF toolkit: convert, edit, lint, and publish pages.
 
@@ -80,6 +80,9 @@ EDIT OPERATIONS (exactly one required):
   --table-update-row "Heading" --match-cell "text" --row "a|b|c"  Replace a row.
   --table-update-cell "Heading" --match-cell "text" --col-name "Header" --value "v"
                                                    Update a single cell by column name.
+  Any --match-cell flag also accepts --match-col COL --match-value V to match
+  against an arbitrary column (located by header name) instead of the first
+  column. --match-cell and --match-col are mutually exclusive.
 
 EDIT FLAGS:
   -i, --input PATH   Read ADF from PATH instead of stdin. Use - for stdin.
@@ -88,6 +91,10 @@ EDIT FLAGS:
       --if-missing   (--table-add-row) Skip silently if row with same first cell exists.
       --col-name "Header"  (--table-update-cell) Column header text to identify target cell.
       --value "text"       (--table-update-cell) New cell content.
+      --match-col "Header" (table ops) Column header used for row match.
+      --match-value "text" (table ops) Value to find in --match-col.
+                          --match-col + --match-value together replace --match-cell
+                          when the first column is not unique enough (rank, ID, etc.).
       --pretty       Pretty-print the JSON output.
 
 PAGE VERBS:
@@ -132,6 +139,8 @@ PAGE VERBS:
                  --table-remove-row "Heading" --match-cell "text"
                  --table-update-row "Heading" --match-cell "text" --row "a|b|c"
                  --table-update-cell "Heading" --match-cell "text" --col-name "Header" --value "v"
+                 Each --match-cell may be replaced by --match-col COL --match-value V
+                 to match an arbitrary column (e.g. when col 1 holds a rank/ID).
                  --multi OPS.json    Apply many ops atomically in 1 GET+PUT.
                In --row, '|' is the cell separator. To include a literal pipe
                character inside a cell, escape it with a backslash, e.g.:
@@ -396,7 +405,37 @@ const (
 	opReplaceIntro
 	opTableUpdateRow
 	opTableUpdateCell
+	opTableMoveRow
 )
+
+// buildMatchSpec resolves the --match-cell / --match-col / --match-value
+// triplet into a single adf.MatchSpec. Returns (spec, provided, error):
+//
+//   - provided is false when no match flag was given (caller decides whether
+//     that's an error for the current op).
+//   - When --match-cell is set, --match-col / --match-value must be empty.
+//   - When --match-col is set, --match-value is required (and vice-versa).
+func buildMatchSpec(matchCell, matchCol, matchValue string) (adf.MatchSpec, bool, error) {
+	hasCell := matchCell != ""
+	hasCol := matchCol != ""
+	hasVal := matchValue != ""
+
+	if hasCell && (hasCol || hasVal) {
+		return adf.MatchSpec{}, false, fmt.Errorf(
+			"--match-cell is mutually exclusive with --match-col / --match-value; pick one mode")
+	}
+	if hasCol != hasVal {
+		return adf.MatchSpec{}, false, fmt.Errorf(
+			"--match-col and --match-value must be used together (both required for column-based match)")
+	}
+	if hasCell {
+		return adf.FirstCellMatch(matchCell), true, nil
+	}
+	if hasCol {
+		return adf.MatchSpec{Col: matchCol, Value: matchValue}, true, nil
+	}
+	return adf.MatchSpec{}, false, nil
+}
 
 // runEdit parses edit-subcommand flags and applies one section-level or
 // table-level operation to the ADF doc read from stdin or --input.
@@ -414,13 +453,17 @@ func runEdit(args []string, stdin io.Reader, stdout, stderr io.Writer) (int, err
 		op           editOp
 		heading      string
 		fragmentPath string
-		atLevel      int
-		rowText      string
-		afterRow     string
-		matchCell    string
-		colName      string
-		newValue     string
-		ifMissing    bool
+		atLevel           int
+		rowText           string
+		afterRow          string
+		matchCell         string
+		matchCol          string
+		matchValue        string
+		colName           string
+		newValue          string
+		ifMissing         bool
+		tablePosition     int  // 1-indexed data-row position for --table-move-row
+		tablePositionSet  bool // tracks whether --position was passed
 		// positionals collects non-flag arguments (only used for fragment path)
 		positionals []string
 	)
@@ -486,6 +529,22 @@ func runEdit(args []string, stdin io.Reader, stdout, stderr io.Writer) (int, err
 				return exitInputErr, errInvalidUsage
 			}
 			matchCell = args[i+1]
+			i++
+
+		case "--match-col":
+			if i+1 >= len(args) {
+				fmt.Fprintln(stderr, "flag --match-col requires a value")
+				return exitInputErr, errInvalidUsage
+			}
+			matchCol = args[i+1]
+			i++
+
+		case "--match-value":
+			if i+1 >= len(args) {
+				fmt.Fprintln(stderr, "flag --match-value requires a value")
+				return exitInputErr, errInvalidUsage
+			}
+			matchValue = args[i+1]
 			i++
 
 		case "--append":
@@ -598,6 +657,32 @@ func runEdit(args []string, stdin io.Reader, stdout, stderr io.Writer) (int, err
 			heading = args[i+1]
 			i++
 
+		case "--table-move-row":
+			if err := setOp(opTableMoveRow); err != nil {
+				fmt.Fprintln(stderr, err)
+				return exitInputErr, errInvalidUsage
+			}
+			if i+1 >= len(args) {
+				fmt.Fprintln(stderr, a, `requires "Heading"`)
+				return exitInputErr, errInvalidUsage
+			}
+			heading = args[i+1]
+			i++
+
+		case "--position":
+			if i+1 >= len(args) {
+				fmt.Fprintln(stderr, "flag --position requires an integer (1-indexed data-row position)")
+				return exitInputErr, errInvalidUsage
+			}
+			n, perr := strconv.Atoi(args[i+1])
+			if perr != nil {
+				fmt.Fprintln(stderr, "flag --position requires an integer, got:", args[i+1])
+				return exitInputErr, errInvalidUsage
+			}
+			tablePosition = n
+			tablePositionSet = true
+			i++
+
 		case "--col-name":
 			if i+1 >= len(args) {
 				fmt.Fprintln(stderr, "flag --col-name requires a value")
@@ -643,13 +728,27 @@ func runEdit(args []string, stdin io.Reader, stdout, stderr io.Writer) (int, err
 		fmt.Fprintln(stderr, "--table-add-row requires --row \"col1|col2|...\"")
 		return exitInputErr, errInvalidUsage
 	}
-	if op == opTableRemoveRow && matchCell == "" {
-		fmt.Fprintln(stderr, "--table-remove-row requires --match-cell \"text\"")
+
+	// Resolve the row-match flags once (shared across the 4 table ops).
+	// --match-cell is the legacy "match first column" mode; --match-col +
+	// --match-value picks an arbitrary column by header name. The two modes
+	// are mutually exclusive.
+	matchSpec, matchProvided, mErr := buildMatchSpec(matchCell, matchCol, matchValue)
+	if mErr != nil {
+		fmt.Fprintln(stderr, mErr)
+		return exitInputErr, errInvalidUsage
+	}
+
+	if op == opTableAddRow && ifMissing && matchProvided {
+		// Allowed: caller wants column-based dedup. Nothing to validate here.
+	}
+	if op == opTableRemoveRow && !matchProvided {
+		fmt.Fprintln(stderr, "--table-remove-row requires --match-cell \"text\" (or --match-col COL --match-value V)")
 		return exitInputErr, errInvalidUsage
 	}
 	if op == opTableUpdateRow {
-		if matchCell == "" {
-			fmt.Fprintln(stderr, "--table-update-row requires --match-cell \"text\"")
+		if !matchProvided {
+			fmt.Fprintln(stderr, "--table-update-row requires --match-cell \"text\" (or --match-col COL --match-value V)")
 			return exitInputErr, errInvalidUsage
 		}
 		if rowText == "" {
@@ -658,8 +757,8 @@ func runEdit(args []string, stdin io.Reader, stdout, stderr io.Writer) (int, err
 		}
 	}
 	if op == opTableUpdateCell {
-		if matchCell == "" {
-			fmt.Fprintln(stderr, "--table-update-cell requires --match-cell \"text\"")
+		if !matchProvided {
+			fmt.Fprintln(stderr, "--table-update-cell requires --match-cell \"text\" (or --match-col COL --match-value V)")
 			return exitInputErr, errInvalidUsage
 		}
 		if colName == "" {
@@ -668,6 +767,16 @@ func runEdit(args []string, stdin io.Reader, stdout, stderr io.Writer) (int, err
 		}
 		if newValue == "" {
 			fmt.Fprintln(stderr, "--table-update-cell requires --value \"text\"")
+			return exitInputErr, errInvalidUsage
+		}
+	}
+	if op == opTableMoveRow {
+		if !matchProvided {
+			fmt.Fprintln(stderr, "--table-move-row requires --match-cell \"text\" (or --match-col COL --match-value V)")
+			return exitInputErr, errInvalidUsage
+		}
+		if !tablePositionSet {
+			fmt.Fprintln(stderr, "--table-move-row requires --position N (1-indexed data-row position)")
 			return exitInputErr, errInvalidUsage
 		}
 	}
@@ -715,18 +824,26 @@ func runEdit(args []string, stdin io.Reader, stdout, stderr io.Writer) (int, err
 		result, err = adf.DeleteSectionAtLevel(doc, heading, atLevel)
 	case opTableAddRow:
 		var existed bool
-		result, existed, err = adf.TableAddRow(doc, heading, atLevel, rowText, afterRow, ifMissing)
+		result, existed, err = adf.TableAddRow(doc, heading, atLevel, rowText, afterRow, ifMissing, matchSpec)
 		if existed {
-			fmt.Fprintf(stderr, "notice: row with first cell %q already exists in %q — skipped (--if-missing)\n",
-				strings.SplitN(rowText, "|", 2)[0], heading)
+			dedup := strings.SplitN(rowText, "|", 2)[0]
+			if matchProvided && matchSpec.Col != "" {
+				dedup = fmt.Sprintf("column %q=%q", matchSpec.Col, matchSpec.Value)
+			} else if matchProvided {
+				dedup = matchSpec.Value
+			}
+			fmt.Fprintf(stderr, "notice: row matching %s already exists in %q — skipped (--if-missing)\n",
+				dedup, heading)
 			// Still write the unchanged doc to stdout so callers can pipe
 		}
 	case opTableRemoveRow:
-		result, err = adf.TableRemoveRow(doc, heading, atLevel, matchCell)
+		result, err = adf.TableRemoveRow(doc, heading, atLevel, matchSpec)
 	case opTableUpdateRow:
-		result, err = adf.TableUpdateRow(doc, heading, atLevel, matchCell, rowText)
+		result, err = adf.TableUpdateRow(doc, heading, atLevel, matchSpec, rowText)
 	case opTableUpdateCell:
-		result, err = adf.TableUpdateCell(doc, heading, atLevel, matchCell, colName, newValue)
+		result, err = adf.TableUpdateCell(doc, heading, atLevel, matchSpec, colName, newValue)
+	case opTableMoveRow:
+		result, err = adf.TableMoveRow(doc, heading, atLevel, matchSpec, tablePosition)
 	}
 	if err != nil {
 		fmt.Fprintln(stderr, err)
@@ -1705,16 +1822,18 @@ func runPageDigest(args []string, stdout, stderr io.Writer) (int, error) {
 // internally by `page rewrite`. The shape mirrors the single-op CLI flags so
 // users who already know `page apply` can compose multi files easily.
 type multiOp struct {
-	Kind      string `json:"kind"`
-	Heading   string `json:"heading,omitempty"`
-	AtLevel   int    `json:"atLevel,omitempty"`
-	Fragment  string `json:"fragment,omitempty"`
-	Row       string `json:"row,omitempty"`
-	AfterRow  string `json:"afterRow,omitempty"`
-	MatchCell string `json:"matchCell,omitempty"`
-	ColName   string `json:"colName,omitempty"`
-	Value     string `json:"value,omitempty"`
-	IfMissing bool   `json:"ifMissing,omitempty"`
+	Kind       string `json:"kind"`
+	Heading    string `json:"heading,omitempty"`
+	AtLevel    int    `json:"atLevel,omitempty"`
+	Fragment   string `json:"fragment,omitempty"`
+	Row        string `json:"row,omitempty"`
+	AfterRow   string `json:"afterRow,omitempty"`
+	MatchCell  string `json:"matchCell,omitempty"`
+	MatchCol   string `json:"matchCol,omitempty"`
+	MatchValue string `json:"matchValue,omitempty"`
+	ColName    string `json:"colName,omitempty"`
+	Value      string `json:"value,omitempty"`
+	IfMissing  bool   `json:"ifMissing,omitempty"`
 }
 
 // multiSpec is the top-level schema for an --multi JSON file.
@@ -1747,19 +1866,35 @@ func applyOp(doc adf.Node, op multiOp, fragment []adf.Node) (adf.Node, bool, err
 		out, err := adf.DeleteSectionAtLevel(doc, op.Heading, op.AtLevel)
 		return out, false, err
 	case "table-add-row":
-		out, existed, err := adf.TableAddRow(doc, op.Heading, op.AtLevel, op.Row, op.AfterRow, op.IfMissing)
+		spec, _, mErr := buildMatchSpec(op.MatchCell, op.MatchCol, op.MatchValue)
+		if mErr != nil {
+			return doc, false, mErr
+		}
+		out, existed, err := adf.TableAddRow(doc, op.Heading, op.AtLevel, op.Row, op.AfterRow, op.IfMissing, spec)
 		if existed {
 			return doc, true, nil
 		}
 		return out, false, err
 	case "table-remove-row":
-		out, err := adf.TableRemoveRow(doc, op.Heading, op.AtLevel, op.MatchCell)
+		spec, _, mErr := buildMatchSpec(op.MatchCell, op.MatchCol, op.MatchValue)
+		if mErr != nil {
+			return doc, false, mErr
+		}
+		out, err := adf.TableRemoveRow(doc, op.Heading, op.AtLevel, spec)
 		return out, false, err
 	case "table-update-row":
-		out, err := adf.TableUpdateRow(doc, op.Heading, op.AtLevel, op.MatchCell, op.Row)
+		spec, _, mErr := buildMatchSpec(op.MatchCell, op.MatchCol, op.MatchValue)
+		if mErr != nil {
+			return doc, false, mErr
+		}
+		out, err := adf.TableUpdateRow(doc, op.Heading, op.AtLevel, spec, op.Row)
 		return out, false, err
 	case "table-update-cell":
-		out, err := adf.TableUpdateCell(doc, op.Heading, op.AtLevel, op.MatchCell, op.ColName, op.Value)
+		spec, _, mErr := buildMatchSpec(op.MatchCell, op.MatchCol, op.MatchValue)
+		if mErr != nil {
+			return doc, false, mErr
+		}
+		out, err := adf.TableUpdateCell(doc, op.Heading, op.AtLevel, spec, op.ColName, op.Value)
 		return out, false, err
 	default:
 		return doc, false, fmt.Errorf("unknown op kind %q", op.Kind)
@@ -1824,15 +1959,19 @@ func validateMultiOp(op multiOp) error {
 		if op.Heading == "" {
 			return fmt.Errorf("table-remove-row requires heading")
 		}
-		if op.MatchCell == "" {
-			return fmt.Errorf("table-remove-row requires matchCell")
+		if _, provided, mErr := buildMatchSpec(op.MatchCell, op.MatchCol, op.MatchValue); mErr != nil {
+			return fmt.Errorf("table-remove-row: %w", mErr)
+		} else if !provided {
+			return fmt.Errorf("table-remove-row requires matchCell (or matchCol + matchValue)")
 		}
 	case "table-update-row":
 		if op.Heading == "" {
 			return fmt.Errorf("table-update-row requires heading")
 		}
-		if op.MatchCell == "" {
-			return fmt.Errorf("table-update-row requires matchCell")
+		if _, provided, mErr := buildMatchSpec(op.MatchCell, op.MatchCol, op.MatchValue); mErr != nil {
+			return fmt.Errorf("table-update-row: %w", mErr)
+		} else if !provided {
+			return fmt.Errorf("table-update-row requires matchCell (or matchCol + matchValue)")
 		}
 		if op.Row == "" {
 			return fmt.Errorf("table-update-row requires row")
@@ -1841,8 +1980,10 @@ func validateMultiOp(op multiOp) error {
 		if op.Heading == "" {
 			return fmt.Errorf("table-update-cell requires heading")
 		}
-		if op.MatchCell == "" {
-			return fmt.Errorf("table-update-cell requires matchCell")
+		if _, provided, mErr := buildMatchSpec(op.MatchCell, op.MatchCol, op.MatchValue); mErr != nil {
+			return fmt.Errorf("table-update-cell: %w", mErr)
+		} else if !provided {
+			return fmt.Errorf("table-update-cell requires matchCell (or matchCol + matchValue)")
 		}
 		if op.ColName == "" {
 			return fmt.Errorf("table-update-cell requires colName")
@@ -1854,6 +1995,15 @@ func validateMultiOp(op multiOp) error {
 		return fmt.Errorf("unknown op kind %q", op.Kind)
 	}
 	return nil
+}
+
+// opMatchDescription renders the human-friendly form of a multiOp's row
+// match (first-cell or by-column) for log/summary output.
+func opMatchDescription(op multiOp) string {
+	if op.MatchCol != "" {
+		return fmt.Sprintf("col %q=%q", op.MatchCol, op.MatchValue)
+	}
+	return fmt.Sprintf("%q", op.MatchCell)
 }
 
 // opSummary returns a short human-readable description for a multi op (used
@@ -1877,9 +2027,9 @@ func opSummary(op multiOp) string {
 	case "table-remove-row":
 		return fmt.Sprintf("remove row from table in %q", op.Heading)
 	case "table-update-row":
-		return fmt.Sprintf("update row in table in %q (match %q)", op.Heading, op.MatchCell)
+		return fmt.Sprintf("update row in table in %q (match %s)", op.Heading, opMatchDescription(op))
 	case "table-update-cell":
-		return fmt.Sprintf("update cell in table in %q (row %q, col %q)", op.Heading, op.MatchCell, op.ColName)
+		return fmt.Sprintf("update cell in table in %q (row %s, col %q)", op.Heading, opMatchDescription(op), op.ColName)
 	default:
 		return op.Kind
 	}
@@ -1966,10 +2116,14 @@ func runPageApply(args []string, stdout, stderr io.Writer) (int, error) {
 		rowText      string
 		afterRow     string
 		matchCell    string
+		matchCol     string
+		matchValue   string
 		colName      string
-		newValue     string
-		ifMissing    bool
-		multiPath    string
+		newValue         string
+		ifMissing        bool
+		multiPath        string
+		tablePosition    int  // 1-indexed data-row position for --table-move-row
+		tablePositionSet bool // tracks whether --position was passed
 	)
 
 	setOp := func(newOp editOp) error {
@@ -2051,6 +2205,20 @@ func runPageApply(args []string, stdout, stderr io.Writer) (int, error) {
 				return exitInputErr, errInvalidUsage
 			}
 			matchCell = remaining[i+1]
+			i++
+		case "--match-col":
+			if i+1 >= len(remaining) {
+				fmt.Fprintln(stderr, "--match-col requires a value")
+				return exitInputErr, errInvalidUsage
+			}
+			matchCol = remaining[i+1]
+			i++
+		case "--match-value":
+			if i+1 >= len(remaining) {
+				fmt.Fprintln(stderr, "--match-value requires a value")
+				return exitInputErr, errInvalidUsage
+			}
+			matchValue = remaining[i+1]
 			i++
 		case "--col-name":
 			if i+1 >= len(remaining) {
@@ -2153,6 +2321,30 @@ func runPageApply(args []string, stdout, stderr io.Writer) (int, error) {
 			}
 			heading = remaining[i+1]
 			i++
+		case "--table-move-row":
+			if err := setOp(opTableMoveRow); err != nil {
+				fmt.Fprintln(stderr, err)
+				return exitInputErr, errInvalidUsage
+			}
+			if i+1 >= len(remaining) {
+				fmt.Fprintln(stderr, a, `requires "Heading"`)
+				return exitInputErr, errInvalidUsage
+			}
+			heading = remaining[i+1]
+			i++
+		case "--position":
+			if i+1 >= len(remaining) {
+				fmt.Fprintln(stderr, "flag --position requires an integer")
+				return exitInputErr, errInvalidUsage
+			}
+			n, perr := strconv.Atoi(remaining[i+1])
+			if perr != nil {
+				fmt.Fprintln(stderr, "flag --position requires an integer, got:", remaining[i+1])
+				return exitInputErr, errInvalidUsage
+			}
+			tablePosition = n
+			tablePositionSet = true
+			i++
 		default:
 			fmt.Fprintln(stderr, "unknown flag:", a)
 			return exitInputErr, errInvalidUsage
@@ -2190,14 +2382,25 @@ func runPageApply(args []string, stdout, stderr io.Writer) (int, error) {
 			fmt.Fprintln(stderr, "page apply: --table-add-row requires --row \"col1|col2|...\"")
 			return exitInputErr, errInvalidUsage
 		}
+	case opTableRemoveRow, opTableUpdateRow, opTableUpdateCell:
+		// match-flag validation is shared below via buildMatchSpec.
+	}
+
+	// Resolve --match-cell vs --match-col/--match-value once for table ops.
+	matchSpec, matchProvided, mErr := buildMatchSpec(matchCell, matchCol, matchValue)
+	if mErr != nil {
+		fmt.Fprintln(stderr, "page apply:", mErr)
+		return exitInputErr, errInvalidUsage
+	}
+	switch op {
 	case opTableRemoveRow:
-		if matchCell == "" {
-			fmt.Fprintln(stderr, "page apply: --table-remove-row requires --match-cell \"text\"")
+		if !matchProvided {
+			fmt.Fprintln(stderr, "page apply: --table-remove-row requires --match-cell \"text\" (or --match-col COL --match-value V)")
 			return exitInputErr, errInvalidUsage
 		}
 	case opTableUpdateRow:
-		if matchCell == "" {
-			fmt.Fprintln(stderr, "page apply: --table-update-row requires --match-cell \"text\"")
+		if !matchProvided {
+			fmt.Fprintln(stderr, "page apply: --table-update-row requires --match-cell \"text\" (or --match-col COL --match-value V)")
 			return exitInputErr, errInvalidUsage
 		}
 		if rowText == "" {
@@ -2205,8 +2408,8 @@ func runPageApply(args []string, stdout, stderr io.Writer) (int, error) {
 			return exitInputErr, errInvalidUsage
 		}
 	case opTableUpdateCell:
-		if matchCell == "" {
-			fmt.Fprintln(stderr, "page apply: --table-update-cell requires --match-cell \"text\"")
+		if !matchProvided {
+			fmt.Fprintln(stderr, "page apply: --table-update-cell requires --match-cell \"text\" (or --match-col COL --match-value V)")
 			return exitInputErr, errInvalidUsage
 		}
 		if colName == "" {
@@ -2215,6 +2418,15 @@ func runPageApply(args []string, stdout, stderr io.Writer) (int, error) {
 		}
 		if newValue == "" {
 			fmt.Fprintln(stderr, "page apply: --table-update-cell requires --value \"text\"")
+			return exitInputErr, errInvalidUsage
+		}
+	case opTableMoveRow:
+		if !matchProvided {
+			fmt.Fprintln(stderr, "page apply: --table-move-row requires --match-cell \"text\" (or --match-col COL --match-value V)")
+			return exitInputErr, errInvalidUsage
+		}
+		if !tablePositionSet {
+			fmt.Fprintln(stderr, "page apply: --table-move-row requires --position N (1-indexed data-row position)")
 			return exitInputErr, errInvalidUsage
 		}
 	}
@@ -2278,19 +2490,27 @@ func runPageApply(args []string, stdout, stderr io.Writer) (int, error) {
 		case opDeleteSection:
 			result, opErr = adf.DeleteSectionAtLevel(doc, heading, atLevel)
 		case opTableAddRow:
-			result, rowExisted, opErr = adf.TableAddRow(doc, heading, atLevel, rowText, afterRow, ifMissing)
+			result, rowExisted, opErr = adf.TableAddRow(doc, heading, atLevel, rowText, afterRow, ifMissing, matchSpec)
 			if rowExisted {
-				fmt.Fprintf(stderr, "notice: row with first cell %q already exists in %q — skipped (--if-missing)\n",
-					strings.SplitN(rowText, "|", 2)[0], heading)
+				dedup := strings.SplitN(rowText, "|", 2)[0]
+				if matchProvided && matchSpec.Col != "" {
+					dedup = fmt.Sprintf("column %q=%q", matchSpec.Col, matchSpec.Value)
+				} else if matchProvided {
+					dedup = matchSpec.Value
+				}
+				fmt.Fprintf(stderr, "notice: row matching %s already exists in %q — skipped (--if-missing)\n",
+					dedup, heading)
 				fmt.Fprintf(stdout, `{"status":"skipped","reason":"row already exists","pageId":%q}`+"\n", pageID)
 				return exitOK, nil
 			}
 		case opTableRemoveRow:
-			result, opErr = adf.TableRemoveRow(doc, heading, atLevel, matchCell)
+			result, opErr = adf.TableRemoveRow(doc, heading, atLevel, matchSpec)
 		case opTableUpdateRow:
-			result, opErr = adf.TableUpdateRow(doc, heading, atLevel, matchCell, rowText)
+			result, opErr = adf.TableUpdateRow(doc, heading, atLevel, matchSpec, rowText)
 		case opTableUpdateCell:
-			result, opErr = adf.TableUpdateCell(doc, heading, atLevel, matchCell, colName, newValue)
+			result, opErr = adf.TableUpdateCell(doc, heading, atLevel, matchSpec, colName, newValue)
+		case opTableMoveRow:
+			result, opErr = adf.TableMoveRow(doc, heading, atLevel, matchSpec, tablePosition)
 		}
 		if opErr != nil {
 			// For section ops, list the current top-level headings to help
@@ -3701,7 +3921,7 @@ func runIndexAdd(args []string, stdout, stderr io.Writer) (int, error) {
 	pageIDCell := "`" + pageID + "`"
 	rowText := displayTitle + "|" + pageIDCell
 
-	updated, existed, err := adf.TableAddRow(ctx.doc, under, 0, rowText, "", ifMissing)
+	updated, existed, err := adf.TableAddRow(ctx.doc, under, 0, rowText, "", ifMissing, adf.MatchSpec{})
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return exitInputErr, err
@@ -3932,7 +4152,7 @@ func runIndexSync(args []string, stdout, stderr io.Writer) (int, error) {
 	added := 0
 	for _, child := range children {
 		rowText := child.Title + "|`" + child.ID + "`"
-		updated, existed, addErr := adf.TableAddRow(doc, under, 0, rowText, "", true)
+		updated, existed, addErr := adf.TableAddRow(doc, under, 0, rowText, "", true, adf.MatchSpec{})
 		if addErr != nil {
 			fmt.Fprintf(stderr, "warning: could not add %q (%s): %v\n", child.Title, child.ID, addErr)
 			continue
