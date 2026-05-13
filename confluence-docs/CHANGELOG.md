@@ -1,5 +1,24 @@
 # Changelog — confluence-docs
 
+## v0.10.3 (2026-05-12) — shell `$` expansion hint applied uniformly
+
+The friction note #11 ("Shell `$` in section names breaks silently") had been partially fixed in an earlier release: `sectionNotFoundError` in `adf/table_edit.go` embeds a helpful hint in the error message when a heading contains `$` but the user's input doesn't. That helper was only used by table operations and `DeleteSection`. The other section operations — `ReplaceSection`, `InsertAfter`, `InsertBefore`, `SectionContent` (used by `page get --section`) — still emitted a bare `section not found: %q` error, no heading list, no hint.
+
+Consolidated: all five section operations in `adf/edit.go` now route through `sectionNotFoundError`, so users get the same error format and the same shell-expansion hint everywhere. Real-world case: `R$200 × 5 clientes = R$100k GMV` (where bash silently turns `$200` into `00` and `$100k` into `00k`) now produces:
+
+```
+section not found: "Cálculo de margem (R00 × 5 clientes = R00k GMV)"
+Headings found in document:
+  (h2) Cálculo de margem (R$200 × 5 clientes = R$100k GMV)
+
+Hint: shell may have expanded variables in your section name.
+  Received: "..."
+  Heading:  "..."
+  Wrap the section name in single quotes to prevent expansion, e.g. --replace-section '...'.
+```
+
+regardless of which operation triggered it. Removed the now-redundant inline `current top-level sections` blocks in `main.go` — the error itself carries everything needed.
+
 ## v0.10.2 (2026-05-12) — uniform setup wizard UX + space alias in setup flow
 
 Two small UX fixes for the setup wizard after v0.10.1.

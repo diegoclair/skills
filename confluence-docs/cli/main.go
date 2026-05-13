@@ -988,13 +988,9 @@ func runPageGet(args []string, stdout, stderr io.Writer) (int, error) {
 		if section != "" {
 			sub, sErr := adf.SectionContent(doc, section, atLevel)
 			if sErr != nil {
+				// Error message embeds the heading list + shell-expansion hint
+				// (from adf.sectionNotFoundError).
 				fmt.Fprintln(stderr, "operation failed:", sErr)
-				fmt.Fprintln(stderr, "current top-level sections:")
-				for _, n := range doc.Content {
-					if n.Type == "heading" {
-						fmt.Fprintf(stderr, "  - h%d %q\n", headingLevelFromNode(n), strings.TrimSpace(allText(n)))
-					}
-				}
 				return exitInputErr, errInvalidUsage
 			}
 			target = sub
@@ -1917,16 +1913,10 @@ func runMultiApply(client *adf.ConfluenceClient, pageID, message string, ops []m
 		for i, op := range ops {
 			next, skipped, opErr := applyOp(current, op, fragments[i])
 			if opErr != nil {
-				// Abort: report which op (1-indexed) failed.
+				// Abort: report which op (1-indexed) failed. Error message
+				// from adf already includes the heading list + shell-expansion
+				// hint when applicable (see adf.sectionNotFoundError).
 				fmt.Fprintf(stderr, "op %d (%s) failed: %v\n", i+1, op.Kind, opErr)
-				if op.Kind != "table-add-row" && op.Kind != "table-remove-row" {
-					fmt.Fprintln(stderr, "current top-level sections:")
-					for _, n := range current.Content {
-						if n.Type == "heading" {
-							fmt.Fprintf(stderr, "  - h%d %q\n", headingLevelFromNode(n), strings.TrimSpace(allText(n)))
-						}
-					}
-				}
 				return meta.Version.Number, 0, meta.Title, 0, fmt.Errorf("op %d (%s): %w", i+1, op.Kind, opErr)
 			}
 			current = next
@@ -2304,17 +2294,10 @@ func runPageApply(args []string, stdout, stderr io.Writer) (int, error) {
 		}
 		if opErr != nil {
 			// For section ops, list the current top-level headings to help
-			// the caller. Table ops embed their own heading list in the
-			// error message — printing it once is enough.
+			// All section error messages from adf now embed the heading
+			// list and the shell-expansion hint themselves (see
+			// adf.sectionNotFoundError), so we just surface the error.
 			fmt.Fprintln(stderr, "operation failed:", opErr)
-			if op != opTableAddRow && op != opTableRemoveRow {
-				fmt.Fprintln(stderr, "current top-level sections:")
-				for _, n := range doc.Content {
-					if n.Type == "heading" {
-						fmt.Fprintf(stderr, "  - h%d %q\n", headingLevelFromNode(n), strings.TrimSpace(allText(n)))
-					}
-				}
-			}
 			// Return errInvalidUsage so main() prints a terse "confluence-docs:
 			// invalid usage" instead of re-printing the (potentially long)
 			// embedded heading list.

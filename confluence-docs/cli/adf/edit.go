@@ -48,7 +48,7 @@ func Append(doc Node, fragment []Node) Node {
 func InsertAfter(doc Node, headingText string, fragment []Node) (Node, error) {
 	idx, end, ok := findSectionBounds(doc.Content, headingText)
 	if !ok {
-		return Node{}, fmt.Errorf("section not found: %q", headingText)
+		return Node{}, sectionNotFoundError(doc.Content, headingText)
 	}
 	_ = idx
 	out := doc
@@ -61,7 +61,7 @@ func InsertAfter(doc Node, headingText string, fragment []Node) (Node, error) {
 func InsertBefore(doc Node, headingText string, fragment []Node) (Node, error) {
 	idx, _, ok := findSectionBounds(doc.Content, headingText)
 	if !ok {
-		return Node{}, fmt.Errorf("section not found: %q", headingText)
+		return Node{}, sectionNotFoundError(doc.Content, headingText)
 	}
 	out := doc
 	out.Content = spliceNodes(doc.Content, idx, idx, fragment)
@@ -74,7 +74,7 @@ func InsertBefore(doc Node, headingText string, fragment []Node) (Node, error) {
 func ReplaceSection(doc Node, headingText string, fragment []Node) (Node, error) {
 	idx, end, ok := findSectionBounds(doc.Content, headingText)
 	if !ok {
-		return Node{}, fmt.Errorf("section not found: %q", headingText)
+		return Node{}, sectionNotFoundError(doc.Content, headingText)
 	}
 	out := doc
 	out.Content = spliceNodes(doc.Content, idx, end, fragment)
@@ -85,7 +85,7 @@ func ReplaceSection(doc Node, headingText string, fragment []Node) (Node, error)
 func DeleteSection(doc Node, headingText string) (Node, error) {
 	idx, end, ok := findSectionBounds(doc.Content, headingText)
 	if !ok {
-		return Node{}, fmt.Errorf("section not found: %q", headingText)
+		return Node{}, sectionNotFoundError(doc.Content, headingText)
 	}
 	out := doc
 	out.Content = spliceNodes(doc.Content, idx, end, nil)
@@ -131,7 +131,7 @@ func ReplaceIntro(doc Node, fragment []Node) (Node, error) {
 func SectionContent(doc Node, headingText string, atLevel int) (Node, error) {
 	idx, end, ok := findSectionBoundsAtLevel(doc.Content, headingText, atLevel)
 	if !ok {
-		return Node{}, fmt.Errorf("section not found: %q", headingText)
+		return Node{}, sectionNotFoundError(doc.Content, headingText)
 	}
 	out := doc
 	out.Content = append([]Node{}, doc.Content[idx:end]...)
