@@ -132,7 +132,7 @@ Project-specific routing (your category structure, aliases, templates) lives on 
 confluence-docs page digest --page-id <id>
 ```
 
-The digest also carries a `Status` line when the title starts with a status emoji (see the **Optional status-emoji pattern** in the Tool preferences section below). For "what's the status of X" questions, this single field is often the entire answer. Add `--json` to get a structured object.
+The digest also parses a leading status emoji from the page title and surfaces it on a `Status:` line. For "what's the status of X" questions, this single field is often the entire answer. Add `--json` to get a structured object. See **Status emoji parsing** in the Tool preferences section below for the full list of recognized emojis.
 
 **Step 2 — `get --section "Heading" --format text` (one section, ~hundreds of bytes).** When the digest tells you which section has the answer, fetch just that section as readable plain text:
 
@@ -406,7 +406,7 @@ Ordered by preference. Always try the cheapest tool that can answer the question
 
 **Why CLI first:** the MCP returns the full ADF body of every page (10–40 KB). The CLI returns digests (~500 bytes), single-section slices (~hundreds of bytes), TSV rows (~150 bytes per result), or one-line status payloads. Across a multi-edit session the difference is usually 10–50× in token cost.
 
-**Optional status-emoji pattern:** prefix page titles with a status emoji — 🟢 (active), 🟡 (in-progress), 🟠 (evaluating), 🔴 (blocked), 🔵 (researched), ⚪ (idle), ✅ (done) — and the CLI's `digest` parses it into a `Status: <emoji> <label>` line in text output (and `"status"` + `"statusEmoji"` fields in `--json`). Use this convention in your project if you find it useful for cheap status queries — it's not required.
+**Status emoji parsing:** `page digest` always inspects the first character of a page title. If it matches one of the recognized status emojis, it's exposed as a structured `Status: <emoji> <label>` line in text output (and as `"status"` + `"statusEmoji"` fields in `--json`). Recognized: 🟢 (active), 🟡 (in-progress), 🟠 (evaluating), 🔴 (blocked), 🔵 (researched), ⚪ (idle), ✅ (done). If the title doesn't start with one of these, the Status line is simply omitted — no harm, no warning. Whether your team adopts the convention in titles is a project decision; the skill always reads it correctly when present.
 
 **Other notes:**
 - **CQL**: prefer `title ~` before `text ~`. **Always** filter by your space key: `space = "<YOUR_SPACE>"`.
