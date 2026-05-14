@@ -1,9 +1,9 @@
-name: Release
+name: Release confluence-docs
 
 on:
   push:
     tags:
-      - 'v*'
+      - 'confluence-v*'
 
 permissions:
   contents: write
@@ -24,9 +24,20 @@ jobs:
         working-directory: confluence-docs/cli
         run: make test
 
+      - name: Compute clean version (strip "confluence-" prefix)
+        id: ver
+        run: |
+          set -euo pipefail
+          # Tag is e.g. "confluence-v0.13.0". The binary should report "v0.13.0".
+          TAG="${{ github.ref_name }}"
+          CLEAN="${TAG#confluence-}"
+          echo "tag=$TAG"     >> "$GITHUB_OUTPUT"
+          echo "clean=$CLEAN" >> "$GITHUB_OUTPUT"
+          echo "Tag $TAG -> clean version $CLEAN"
+
       - name: Cross-compile binaries
         working-directory: confluence-docs/cli
-        run: make build-all VERSION=${{ github.ref_name }}
+        run: make build-all VERSION=${{ steps.ver.outputs.clean }}
 
       - name: Package platform ZIPs
         run: |
@@ -63,7 +74,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          name: ${{ github.ref_name }}
+          name: ${{ steps.ver.outputs.tag }}
           files: release-assets/*.zip
           generate_release_notes: true
           fail_on_unmatched_files: true

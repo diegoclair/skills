@@ -13,9 +13,19 @@ import (
 	"github.com/diegoclair/skills/pkg/atlassian/setup"
 )
 
+func init() {
+	// Scope the shared setup package's per-skill config (active space, home
+	// page ID, etc.) to this skill. Credentials themselves live atlassian-wide
+	// at ~/.config/atlassian/credentials — see pkg/atlassian/setup.ConfigPath.
+	// Explicit even though "confluence-docs" is the package default: pair with
+	// the equivalent call in jira-tickets/cli/main.go so neither skill relies
+	// on a hidden default.
+	setup.SetSkillName("confluence-docs")
+}
+
 // version is injected at build time via -ldflags "-X main.version=..."
 // Falls back to the source-tree version when not set via ldflags (dev builds).
-var version = "v0.12.2"
+var version = "v0.13.0"
 
 const helpText = `confluence-docs — Confluence ADF toolkit: convert, edit, lint, and publish pages.
 

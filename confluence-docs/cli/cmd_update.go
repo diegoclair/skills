@@ -130,12 +130,48 @@ func resolveLatestVersion(repo string) (string, error) {
 	return tag, nil
 }
 
-// normalizeVersion strips a leading "v" so "v0.3.3" and "0.3.3" compare equal.
-// Also handles the build-time "dev" / "v0.3.0-3-g734f5ea-dirty" variants — for
-// those, equality with a clean tag is impossible, which is the intent (a dev
-// build should always show as "behind").
+// normalizeVersion canonicalizes a version string so two forms compare equal.
+//
+// Handles three patterns:
+//   - "0.3.3"            → "0.3.3"   (already clean)
+//   - "v0.3.3"           → "0.3.3"   (strip leading "v")
+//   - "confluence-v0.13.0" → "0.13.0" (strip "<anything>-v" prefix)
+//
+// The last form exists because as of v0.13.0 this repo uses tag prefixes
+// (`confluence-v*` for this skill, `jira-v*` for the sibling jira-tickets
+// skill) so releases of different skills don't collide. The build-time
+// ldflags strip the prefix when stamping the binary, so the *installed*
+// version is already "v0.13.0" — but `resolveLatestVersion` reads the raw
+// tag off the GitHub redirect, which still carries the prefix. This
+// function bridges that.
+//
+// "dev" / "v0.3.0-3-g734f5ea-dirty" builds compare unequal to any clean
+// tag — the intent is that a dev build always shows as "behind".
 func normalizeVersion(v string) string {
 	v = strings.TrimSpace(v)
+	// Strip a leading "<prefix>-" only when the "v" right after the dash
+	// is immediately followed by a digit. Without that guard, strings like
+	// "dev" would be mangled (the loop would split at the inner "v" and
+	// produce ""). Examples:
+	//   "v0.13.0"            → loop finds v@0 followed by '0', i==0 → no strip
+	//                          → TrimPrefix("v") → "0.13.0"           ✅
+	//   "confluence-v0.13.0" → loop finds v@11 preceded by '-', followed
+	//                          by '0' → strip prefix → "v0.13.0"
+	//                          → TrimPrefix → "0.13.0"                ✅
+	//   "dev"                → no "v" followed by a digit             → "dev"  ✅
+	//   "v0.3.0-3-g734f...-dirty" → strip nothing (starts at 0)
+	//                              → TrimPrefix → "0.3.0-3-g...-dirty" ✅
+	for i := 0; i < len(v)-1; i++ {
+		if v[i] == 'v' && v[i+1] >= '0' && v[i+1] <= '9' {
+			if i == 0 {
+				break // no prefix to strip; fall through to TrimPrefix
+			}
+			if v[i-1] == '-' {
+				v = v[i:]
+				break
+			}
+		}
+	}
 	v = strings.TrimPrefix(v, "v")
 	return v
 }

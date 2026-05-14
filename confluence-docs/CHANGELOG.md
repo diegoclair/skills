@@ -1,5 +1,53 @@
 # Changelog — confluence-docs
 
+## v0.13.0 (2026-05-14) — tag prefix `confluence-v*` + shared atlassian credentials
+
+Minor bump — no end-user CLI flag changes, but the release pipeline and credentials store both move. Triggered by the work that prepares the repo for the sibling `jira-tickets` skill.
+
+### Tag prefix migration: `v*` → `confluence-v*`
+
+Until v0.12.2 the release workflow fired on any `v*` tag, which was fine while `confluence-docs` was the only skill in the repo. Now `jira-tickets` ships from the same monorepo and needs its own release pipeline triggered by `jira-v*`. To keep them disjoint:
+
+- `.github/workflows/release.yml` → renamed to `release-confluence.yml`, trigger changed to `confluence-v*`
+- `.github/workflows/release-jira.yml` → new, trigger `jira-v*`
+
+The release-confluence workflow now strips the `confluence-` prefix before passing `VERSION` to `make build-all`, so the binary still reports `v0.13.0` (not `confluence-v0.13.0`). The GitHub release page itself shows the full prefixed tag.
+
+### `normalizeVersion` handles the new prefix
+
+`confluence-docs update --check` compares the installed binary version against the tag the GitHub redirect points at (`/releases/tag/<tag>`). After this release that tag is `confluence-v0.13.0`. Updated `normalizeVersion` in `cmd_update.go` to strip any leading `<prefix>-v` so equality works:
+
+```
+v0.13.0            → 0.13.0
+confluence-v0.13.0 → 0.13.0   (was: "confluence-0.13.0" — false mismatch)
+jira-v0.1.0        → 0.1.0    (futureproofing)
+```
+
+### Shared atlassian credentials at `~/.config/atlassian/credentials`
+
+The Atlassian API token authenticates the user, not the product. Installing the upcoming `jira-tickets` skill on a machine that already has `confluence-docs` configured should NOT require pasting the same token a second time. Implemented in `pkg/atlassian/setup`:
+
+```
+Before:  <UserConfigDir>/confluence-docs/credentials  (per-skill)
+After:   <UserConfigDir>/atlassian/credentials        (shared)
+```
+
+Reads fall back through the legacy per-skill paths automatically with a one-line warning suggesting `confluence-docs setup` to migrate. Writes always go to the new path. Per-skill non-secret config (active space, home_page_id) stays scoped to `<UserConfigDir>/<skill>/config` — those values genuinely differ between skills.
+
+`pkg/atlassian/setup.SetSkillName("confluence-docs")` is now called explicitly from `main.go` in both skills' `init()`, so neither relies on a hidden default.
+
+### `pkg/atlassian/jira/` skeleton
+
+A new package — `github.com/diegoclair/skills/pkg/atlassian/jira` — ships with the `Client` type, `NewClient` constructor, and base-URL helpers, but no actual REST calls wired yet. Lets the upcoming `jira-tickets` command files (search, issue digest, transition, comment) be written against a stable contract while the implementation lands across v0.2–v0.5 of jira-tickets.
+
+The package is in `pkg/atlassian/` because `confluence-docs` will share the same auth/retry primitives once a deeper refactor extracts the Confluence-specific bits out of `pkg/atlassian/adf/` into a `pkg/atlassian/confluence/` subpackage. That refactor was attempted in batch 2 of this session but deferred — `storage_convert.go` holds a `*ConfluenceClient` parameter that would create a circular import without an interface extraction step. Will land in a separate release.
+
+### Migration notes
+
+`confluence-docs update` brings v0.13.0 in. Credentials at the legacy `<UserConfigDir>/confluence-docs/credentials` path keep working (fallback chain handles them). Re-running `confluence-docs setup` once writes them to the new shared path and silences the legacy-path warning.
+
+---
+
 ## v0.12.2 (2026-05-14) — `update` follows multi-hop redirect chains
 
 Single-fix release. `confluence-docs update` and `confluence-docs update --check` now correctly resolve the latest release tag even when GitHub returns multiple redirects (e.g. right after a repo transfer, when `lybel-app/skills/releases/latest` first redirects to `diegoclair/skills/releases/latest`, then resolves to `diegoclair/skills/releases/tag/v0.12.1`).
