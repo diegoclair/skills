@@ -142,9 +142,9 @@ func TestPrintConfigPath(t *testing.T) {
 	if !filepath.IsAbs(got) {
 		t.Errorf("expected absolute path, got %q", got)
 	}
-	// Must end with the canonical suffix.
-	if !strings.HasSuffix(got, filepath.Join("confluence-docs", "credentials")) {
-		t.Errorf("path %q should end with confluence-docs/credentials", got)
+	// Must end with the canonical suffix (atlassian-wide shared creds).
+	if !strings.HasSuffix(got, filepath.Join("atlassian", "credentials")) {
+		t.Errorf("path %q should end with atlassian/credentials", got)
 	}
 }
 
@@ -294,13 +294,13 @@ func TestConfigPath_IsAbsolute(t *testing.T) {
 	}
 }
 
-func TestConfigPath_ContainsLybelDocs(t *testing.T) {
+func TestConfigPath_ContainsAtlassian(t *testing.T) {
 	p, err := ConfigPath()
 	if err != nil {
 		t.Fatalf("ConfigPath() error: %v", err)
 	}
-	if !strings.Contains(p, "confluence-docs") {
-		t.Errorf("ConfigPath() = %q, want 'confluence-docs' in path", p)
+	if !strings.Contains(p, "atlassian") {
+		t.Errorf("ConfigPath() = %q, want 'atlassian' in path (creds are atlassian-wide)", p)
 	}
 	if !strings.HasSuffix(p, "credentials") {
 		t.Errorf("ConfigPath() = %q, want to end with 'credentials'", p)
@@ -317,7 +317,7 @@ func TestConfigPath_OSSpecific(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := filepath.Join(dir, "confluence-docs", "credentials")
+		want := filepath.Join(dir, "atlassian", "credentials")
 		if p != want {
 			t.Errorf("Linux: got %q, want %q", p, want)
 		}
@@ -329,7 +329,7 @@ func TestConfigPath_OSSpecific(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := filepath.Join(dir, "Library", "Application Support", "confluence-docs", "credentials")
+		want := filepath.Join(dir, "Library", "Application Support", "atlassian", "credentials")
 		if p != want {
 			t.Errorf("macOS: got %q, want %q", p, want)
 		}
@@ -340,7 +340,7 @@ func TestConfigPath_OSSpecific(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := filepath.Join(dir, "confluence-docs", "credentials")
+		want := filepath.Join(dir, "atlassian", "credentials")
 		if p != want {
 			t.Errorf("Windows: got %q, want %q", p, want)
 		}

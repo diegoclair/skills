@@ -33,6 +33,30 @@ const (
 	ExitNetworkErr  = 3
 )
 
+// skillName identifies which skill is calling into this package — used to
+// scope the per-skill config file (active_space, home_page_id, etc.) and to
+// build legacy credential fallback paths. Credentials themselves are
+// atlassian-wide and live under `<UserConfigDir>/atlassian/credentials`,
+// shared across all atlassian skills (confluence-docs, jira-tickets, …)
+// since the email and API token are the same.
+//
+// Defaults to "confluence-docs" for back-compat with installs from v0.12.x
+// and earlier. Other skills must call SetSkillName once in main() before
+// any other function in this package is invoked.
+var skillName = "confluence-docs"
+
+// SetSkillName configures the per-skill scope for this package. Idempotent.
+// Must be called from main() before any other function. Calling it with an
+// empty string is a no-op.
+func SetSkillName(name string) {
+	if name != "" {
+		skillName = name
+	}
+}
+
+// SkillName returns the configured skill name (for tests/diagnostics).
+func SkillName() string { return skillName }
+
 // httpClient is the interface used for HTTP calls so tests can inject a mock.
 type httpClient interface {
 	Do(req *http.Request) (*http.Response, error)
@@ -58,37 +82,62 @@ type SpaceInfo struct {
 	HomepageID string
 }
 
-// ConfigPath returns the platform-appropriate path to the credentials file.
+// ConfigPath returns the platform-appropriate path to the atlassian-wide
+// credentials file. Credentials (email + API token) are shared across all
+// atlassian skills since they identify the user, not the product.
 //
-//   - Linux:   $XDG_CONFIG_HOME/confluence-docs/credentials  (falls back to ~/.config/…)
-//   - macOS:   ~/Library/Application Support/confluence-docs/credentials
-//   - Windows: %AppData%\confluence-docs\credentials
+//   - Linux:   $XDG_CONFIG_HOME/atlassian/credentials  (falls back to ~/.config/…)
+//   - macOS:   ~/Library/Application Support/atlassian/credentials
+//   - Windows: %AppData%\atlassian\credentials
 func ConfigPath() (string, error) {
 	dir, err := os.UserConfigDir()
 	if err != nil {
 		return "", fmt.Errorf("cannot determine config directory: %w", err)
 	}
-	return filepath.Join(dir, "confluence-docs", "credentials"), nil
+	return filepath.Join(dir, "atlassian", "credentials"), nil
 }
 
 // ConfigFilePath returns the platform-appropriate path to the non-sensitive
-// config file (cloud, active_space_*, active_home_page_id).
+// per-skill config file (cloud, active_space_*, active_home_page_id).
+// Scoped to skillName because active workspace differs between skills
+// (a Confluence space ID is meaningless to jira-tickets).
 func ConfigFilePath() (string, error) {
 	dir, err := os.UserConfigDir()
 	if err != nil {
 		return "", fmt.Errorf("cannot determine config directory: %w", err)
 	}
-	return filepath.Join(dir, "confluence-docs", "config"), nil
+	return filepath.Join(dir, skillName, "config"), nil
 }
 
-// legacyConfigPath returns the old hardcoded path used before the
-// cross-platform migration: ~/.config/confluence-docs/credentials.
-func legacyConfigPath() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
+// fallbackCredsPaths returns the ordered list of legacy locations to try
+// when the new atlassian-wide path doesn't have a credentials file yet.
+// Order: most recent legacy first, oldest last.
+//
+//   1. <UserConfigDir>/<skill>/credentials   — v0.10–v0.12 per-skill cross-platform path
+//   2. ~/.config/<skill>/credentials         — v0.9 and earlier hardcoded-Linux path
+//
+// Returns paths even if their parent directories don't exist; the caller
+// uses os.IsNotExist to skip absent files.
+func fallbackCredsPaths() []string {
+	var paths []string
+	if dir, err := os.UserConfigDir(); err == nil {
+		paths = append(paths, filepath.Join(dir, skillName, "credentials"))
 	}
-	return filepath.Join(home, ".config", "confluence-docs", "credentials"), nil
+	if home, err := os.UserHomeDir(); err == nil {
+		paths = append(paths, filepath.Join(home, ".config", skillName, "credentials"))
+	}
+	return paths
+}
+
+// legacyConfigPath kept as an alias for tests and external callers that
+// expect a single legacy path. Returns the first legacy path (the v0.10+
+// per-skill cross-platform location).
+func legacyConfigPath() (string, error) {
+	paths := fallbackCredsPaths()
+	if len(paths) == 0 {
+		return "", fmt.Errorf("cannot determine legacy config path")
+	}
+	return paths[0], nil
 }
 
 // ReadCredsFile reads the credentials file at the canonical config path.
@@ -105,17 +154,22 @@ func ReadCredsFile(stderr io.Writer) (email, token string, err error) {
 
 	data, readErr := os.ReadFile(newPath)
 	if readErr != nil && os.IsNotExist(readErr) {
-		// Try legacy path (~/.config/confluence-docs/credentials).
-		// On Linux the legacy and new paths are identical, so skip the
-		// legacy check in that case to avoid double-reading.
-		legacyPath, legacyErr := legacyConfigPath()
-		if legacyErr == nil && legacyPath != newPath {
-			if legacyData, legacyReadErr := os.ReadFile(legacyPath); legacyReadErr == nil {
+		// New atlassian-wide path doesn't exist yet. Try each legacy
+		// per-skill path in order (most recent first). Print a one-shot
+		// warning so users know to migrate by re-running setup, but keep
+		// the read working so existing installs aren't broken.
+		for _, legacyPath := range fallbackCredsPaths() {
+			if legacyPath == newPath {
+				continue // would have already been tried
+			}
+			legacyData, legacyReadErr := os.ReadFile(legacyPath)
+			if legacyReadErr == nil {
 				fmt.Fprintf(stderr,
-					"warning: credentials found at legacy path %s — run `confluence-docs setup` to migrate to %s\n",
-					legacyPath, newPath)
+					"warning: credentials found at legacy path %s — run `%s setup` to migrate to %s (shared across atlassian skills)\n",
+					legacyPath, skillName, newPath)
 				data = legacyData
 				readErr = nil
+				break
 			}
 		}
 	}

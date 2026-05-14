@@ -11,7 +11,16 @@ import (
 	"fmt"
 	"io"
 	"os"
+
+	"github.com/diegoclair/skills/pkg/atlassian/setup"
 )
+
+func init() {
+	// Scope the shared setup package's per-skill config (active workspace,
+	// etc.) to this skill. Credentials themselves live atlassian-wide at
+	// ~/.config/atlassian/credentials — see pkg/atlassian/setup.ConfigPath.
+	setup.SetSkillName("jira-tickets")
+}
 
 // version is injected at build time via -ldflags "-X main.version=..."
 // Falls back to the source-tree version when not set via ldflags (dev builds).
