@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lybel-app/skills/pkg/atlassian/adf"
-	"github.com/lybel-app/skills/pkg/atlassian/setup"
+	"github.com/diegoclair/skills/pkg/atlassian/adf"
+	"github.com/diegoclair/skills/pkg/atlassian/setup"
 )
 
 // ── test helpers ──────────────────────────────────────────────────────────────

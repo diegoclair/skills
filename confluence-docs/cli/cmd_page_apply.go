@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/lybel-app/skills/pkg/atlassian/adf"
+	"github.com/diegoclair/skills/pkg/atlassian/adf"
 )
 
 type multiOp struct {

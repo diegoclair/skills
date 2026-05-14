@@ -5,7 +5,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/lybel-app/skills/pkg/atlassian/adf"
+	"github.com/diegoclair/skills/pkg/atlassian/adf"
 )
 
 func runPageUpload(args []string, stdout, stderr io.Writer) (int, error) {

@@ -19,12 +19,12 @@ If the user has no Atlassian account, **stop** — they need to create one and j
 
 **macOS / Linux** (bash/zsh):
 ```bash
-curl -fsSL https://raw.githubusercontent.com/lybel-app/skills/main/confluence-docs/install/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/diegoclair/skills/main/confluence-docs/install/install.sh | bash
 ```
 
 **Windows** (PowerShell 5+):
 ```powershell
-iwr -useb https://raw.githubusercontent.com/lybel-app/skills/main/confluence-docs/install/install.ps1 | iex
+iwr -useb https://raw.githubusercontent.com/diegoclair/skills/main/confluence-docs/install/install.ps1 | iex
 ```
 
 > Do not use WSL's `install.sh` if the user runs Claude Desktop on Windows — install from PowerShell so the binary lands under `%USERPROFILE%\.claude\skills\…`.

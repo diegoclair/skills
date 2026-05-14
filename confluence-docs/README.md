@@ -6,7 +6,7 @@ Built for any team running a Confluence Cloud space alongside Claude (or any oth
 
 ```bash
 # One-shot install (Linux/macOS)
-curl -fsSL https://raw.githubusercontent.com/lybel-app/skills/main/confluence-docs/install/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/diegoclair/skills/main/confluence-docs/install/install.sh | bash
 ```
 
 ---

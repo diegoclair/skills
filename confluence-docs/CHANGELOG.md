@@ -1,8 +1,18 @@
 # Changelog — confluence-docs
 
-## v0.12.0 (2026-05-14) — monorepo refactor: shared `pkg/atlassian` module
+## v0.12.1 (2026-05-14) — monorepo refactor + repo moved to `diegoclair/skills`
 
-Repository-level refactor preparing the codebase for a sibling **`jira-tickets`** skill (separate binary, same Atlassian token, same ADF format, same packaging convention). **Zero behavior change for end users** — the `confluence-docs` binary, CLI flags, skill contract, and reference files are byte-for-byte identical to v0.11.3. The change is entirely about layout and shared code.
+Combines two structural changes; **zero behavior change for end users**. The `confluence-docs` binary, CLI flags, skill contract, and reference files are byte-for-byte identical to v0.11.3.
+
+(v0.12.0 was prepared internally with the monorepo refactor but never published — the repo move happened in the same session and both ship together as v0.12.1 to keep the public history clean.)
+
+### Repo moved: `lybel-app/skills` → `diegoclair/skills`
+
+GitHub transferred ownership of the repo. All URLs, Go module paths (`github.com/diegoclair/skills/...`), install-script defaults (`CONFLUENCE_DOCS_REPO=diegoclair/skills`), README badges, install-for-ai runbook, and CI workflow now point at the new location. GitHub redirects keep the old `lybel-app/skills` URLs alive, so existing `confluence-docs update` installs continue to find releases — but new clones and Go imports should resolve directly to the new path.
+
+### Monorepo refactor: shared `pkg/atlassian` module
+
+Repository-level refactor preparing the codebase for a sibling **`jira-tickets`** skill (separate binary, same Atlassian token, same ADF format, same packaging convention).
 
 ### What changed (under the hood)
 
@@ -28,8 +38,8 @@ skills/                              (repo root)
 `confluence-docs/cli/go.mod` ends with:
 
 ```
-require github.com/lybel-app/skills/pkg/atlassian v0.0.0-...
-replace github.com/lybel-app/skills/pkg/atlassian => ../../pkg/atlassian
+require github.com/diegoclair/skills/pkg/atlassian v0.0.0-...
+replace github.com/diegoclair/skills/pkg/atlassian => ../../pkg/atlassian
 ```
 
 `go.work` at the repo root lists `pkg/atlassian` and `confluence-docs/cli`. The replace lets `go build` and `make` work inside `confluence-docs/cli/` on its own (CI keeps working unchanged); the workspace gives IDEs/LSPs the same view contributors get. When `pkg/atlassian` eventually publishes its own semver-tagged releases, the replace goes away and the require pins a real version.

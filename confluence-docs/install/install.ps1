@@ -1,10 +1,10 @@
 # install.ps1 — PowerShell 5+ installer for confluence-docs (Windows)
 #
 # Usage (one-liner):
-#   iwr -useb https://raw.githubusercontent.com/lybel-app/skills/main/confluence-docs/install/install.ps1 | iex
+#   iwr -useb https://raw.githubusercontent.com/diegoclair/skills/main/confluence-docs/install/install.ps1 | iex
 #
 # Environment variables (all optional):
-#   $env:CONFLUENCE_DOCS_REPO      GitHub "owner/repo" (default: lybel-app/skills)
+#   $env:CONFLUENCE_DOCS_REPO      GitHub "owner/repo" (default: diegoclair/skills)
 #   $env:CLAUDE_HOME          Override Claude home dir (default: $env:USERPROFILE\.claude)
 #   $env:CONFLUENCE_DOCS_VERSION   Specific release tag (default: latest)
 
@@ -13,7 +13,7 @@ $ErrorActionPreference = 'Stop'
 
 # ── config ────────────────────────────────────────────────────────────────────
 
-$Repo        = if ($env:CONFLUENCE_DOCS_REPO)    { $env:CONFLUENCE_DOCS_REPO }    else { 'lybel-app/skills' }
+$Repo        = if ($env:CONFLUENCE_DOCS_REPO)    { $env:CONFLUENCE_DOCS_REPO }    else { 'diegoclair/skills' }
 $ClaudeHome  = if ($env:CLAUDE_HOME)         { $env:CLAUDE_HOME }         else { Join-Path $env:USERPROFILE '.claude' }
 $SkillDir    = Join-Path $ClaudeHome 'skills\confluence-docs'
 $BinDir      = Join-Path $SkillDir 'bin'

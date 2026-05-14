@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/lybel-app/skills/pkg/atlassian/adf"
+	"github.com/diegoclair/skills/pkg/atlassian/adf"
 )
 
 func runPageRewrite(args []string, stdout, stderr io.Writer) (int, error) {

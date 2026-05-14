@@ -1,7 +1,7 @@
 # Lybel Skills
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
-[![Latest Release](https://img.shields.io/github/v/release/lybel-app/skills?color=11C47E&label=release)](https://github.com/lybel-app/skills/releases/latest)
+[![Latest Release](https://img.shields.io/github/v/release/diegoclair/skills?color=11C47E&label=release)](https://github.com/diegoclair/skills/releases/latest)
 [![Claude Skills](https://img.shields.io/badge/Claude-Skills-11C47E)](https://docs.claude.com/en/docs/claude-code/skills)
 
 > Open-source Claude Skills maintained by the **Lybel** team. Works for any company — point each skill at your own Confluence / Jira / etc. PRs welcome.
@@ -40,12 +40,12 @@ Every write does a fresh GET before the PUT, so the cache never causes accidenta
 
 **macOS / Linux:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/lybel-app/skills/main/confluence-docs/install/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/diegoclair/skills/main/confluence-docs/install/install.sh | bash
 ```
 
 **Windows (PowerShell):**
 ```powershell
-iwr -useb https://raw.githubusercontent.com/lybel-app/skills/main/confluence-docs/install/install.ps1 | iex
+iwr -useb https://raw.githubusercontent.com/diegoclair/skills/main/confluence-docs/install/install.ps1 | iex
 ```
 
 The installer is idempotent: it pulls the latest release, places everything in `~/.claude/skills/confluence-docs/`, adds the binary to `$PATH`, and reports whether credentials are already configured. **Open a new shell** afterwards (or `source ~/.zshrc`) for the PATH change to take effect.
@@ -66,7 +66,7 @@ Reopen Claude Code and ask: *"where is the governance page?"*, *"create a new pa
 
 Paste this into any AI agent:
 
-> I want to install the `confluence-docs` skill. Follow the runbook at https://github.com/lybel-app/skills/blob/main/confluence-docs/reference/install-for-ai.md
+> I want to install the `confluence-docs` skill. Follow the runbook at https://github.com/diegoclair/skills/blob/main/confluence-docs/reference/install-for-ai.md
 
 The [`reference/install-for-ai.md`](./confluence-docs/reference/install-for-ai.md) is a runbook with deterministic exit codes and token-handling safety rules.
 

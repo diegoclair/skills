@@ -2,10 +2,10 @@
 # install.sh — POSIX shell installer for confluence-docs (Linux + macOS)
 #
 # Usage (one-liner):
-#   curl -fsSL https://raw.githubusercontent.com/lybel-app/skills/main/confluence-docs/install/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/diegoclair/skills/main/confluence-docs/install/install.sh | bash
 #
 # Environment variables (all optional):
-#   CONFLUENCE_DOCS_REPO   GitHub "owner/repo" (default: lybel-app/skills)
+#   CONFLUENCE_DOCS_REPO   GitHub "owner/repo" (default: diegoclair/skills)
 #   CLAUDE_HOME       Override Claude home dir (default: $HOME/.claude)
 #   CONFLUENCE_DOCS_VERSION  Specific release tag (default: latest)
 
@@ -13,7 +13,7 @@ set -e
 
 # ── config ────────────────────────────────────────────────────────────────────
 
-REPO="${CONFLUENCE_DOCS_REPO:-lybel-app/skills}"
+REPO="${CONFLUENCE_DOCS_REPO:-diegoclair/skills}"
 CLAUDE_HOME="${CLAUDE_HOME:-$HOME/.claude}"
 SKILL_DIR="$CLAUDE_HOME/skills/confluence-docs"
 BIN_DIR="$SKILL_DIR/bin"

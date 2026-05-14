@@ -19,8 +19,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lybel-app/skills/pkg/atlassian/adf"
-	"github.com/lybel-app/skills/pkg/atlassian/setup"
+	"github.com/diegoclair/skills/pkg/atlassian/adf"
+	"github.com/diegoclair/skills/pkg/atlassian/setup"
 )
 
 // spacesCacheTTL is how long the spaces list is considered fresh.

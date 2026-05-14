@@ -11,13 +11,13 @@ Designed for any team running a Confluence Cloud space alongside Claude (or any 
 **Linux / macOS:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/lybel-app/skills/main/confluence-docs/install/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/diegoclair/skills/main/confluence-docs/install/install.sh | bash
 ```
 
 **Windows:**
 
 ```powershell
-iwr -useb https://raw.githubusercontent.com/lybel-app/skills/main/confluence-docs/install/install.ps1 | iex
+iwr -useb https://raw.githubusercontent.com/diegoclair/skills/main/confluence-docs/install/install.ps1 | iex
 ```
 
 The script downloads the latest release, places the binary at `~/.claude/skills/confluence-docs/bin/confluence-docs` (or `.exe` on Windows), and adds it to your `$PATH`.

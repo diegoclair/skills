@@ -1,4 +1,4 @@
-module github.com/lybel-app/skills/pkg/atlassian
+module github.com/diegoclair/skills/pkg/atlassian
 
 go 1.26.2
 

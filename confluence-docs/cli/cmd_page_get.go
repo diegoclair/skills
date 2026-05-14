@@ -6,7 +6,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/lybel-app/skills/pkg/atlassian/adf"
+	"github.com/diegoclair/skills/pkg/atlassian/adf"
 )
 
 func runPageGet(args []string, stdout, stderr io.Writer) (int, error) {

@@ -5,7 +5,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/lybel-app/skills/pkg/atlassian/adf"
+	"github.com/diegoclair/skills/pkg/atlassian/adf"
 )
 
 func runExtractBody(args []string, stdin io.Reader, stdout, stderr io.Writer) (int, error) {
