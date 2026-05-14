@@ -1,5 +1,31 @@
 # Changelog — confluence-docs
 
+## v0.14.0 (2026-05-14) — update uses prefix-filter API (future-proof)
+
+Minor bump — no end-user CLI flag changes. `confluence-docs update` and `update --check` now resolve the latest release via the GitHub Releases API filtered by tag prefix, replacing the previous redirect-follow approach.
+
+### Why the migration
+
+`/releases/latest` is a singleton per repo — GitHub's redirect points at whichever release has `make_latest: true`. In a monorepo with multiple products (`confluence-v*`, `jira-v*`, and potentially more), only one product can claim that pointer at a time. A third skill claiming `make_latest: true` would silently break `confluence-docs update`, redirecting it to the wrong product's tag.
+
+The fix is what every monorepo with this shape does: query `GET /repos/<owner>/<repo>/releases`, filter client-side by tag prefix, take the first match (GitHub returns newest-first by default). This is now the shared `pkg/atlassian/release` package, also used by the sibling `jira-tickets` skill — one implementation to maintain, two skills covered.
+
+### What changed mechanically
+
+- `cmd_update.go`: removed local `resolveLatestVersion` and `normalizeVersion` functions entirely. The resolution call is now `release.FindLatestByPrefix("diegoclair/skills", "confluence-v", nil)` and normalization uses `release.NormalizeVersion`.
+- `main_test.go`: deleted `TestNormalizeVersion` — equivalent tests already exist in `pkg/atlassian/release/release_test.go`.
+- Import `"github.com/diegoclair/skills/pkg/atlassian/release"` added; unused `net/http`, `strings`, and `time` imports removed from `cmd_update.go`.
+
+### What was preserved
+
+Same exit codes (0 / 10 / 3), same flags (`--check`, `-h`, `--help`), same human-readable output strings, same installer shell-out logic on Linux/macOS/Windows. Fully backward-compatible — the change is entirely under the hood.
+
+### Migration notes
+
+`confluence-docs update` brings v0.14.0 in. Nothing else to do.
+
+---
+
 ## v0.13.0 (2026-05-14) — tag prefix `confluence-v*` + shared atlassian credentials
 
 Minor bump — no end-user CLI flag changes, but the release pipeline and credentials store both move. Triggered by the work that prepares the repo for the sibling `jira-tickets` skill.

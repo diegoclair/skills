@@ -13,11 +13,9 @@ import (
 func runUpdate(args []string, stdout, stderr io.Writer) (int, error) {
 	const (
 		repoOwnerRepo = "diegoclair/skills"
-		installShURL  = "https://raw.githubusercontent.com/diegoclair/skills/main/confluence-docs/install/install.sh"
-		installPS1URL = "https://raw.githubusercontent.com/diegoclair/skills/main/confluence-docs/install/install.ps1"
-		// exit 10 is reserved for "update available" so scripts/CI can
-		// distinguish "all good" (0) from "needs upgrade" without parsing.
-		exitUpdateAvailable = 10
+		tagPrefix     = "jira-v"
+		installShURL  = "https://raw.githubusercontent.com/diegoclair/skills/main/jira-tickets/install/install.sh"
+		installPS1URL = "https://raw.githubusercontent.com/diegoclair/skills/main/jira-tickets/install/install.ps1"
 	)
 
 	var checkOnly bool
@@ -27,15 +25,16 @@ func runUpdate(args []string, stdout, stderr io.Writer) (int, error) {
 		case "--check":
 			checkOnly = true
 		case "-h", "--help":
-			fmt.Fprintln(stdout, "update — fetch the latest release of confluence-docs.")
+			fmt.Fprintln(stdout, "update — fetch the latest release of jira-tickets.")
 			fmt.Fprintln(stdout, "")
-			fmt.Fprintln(stdout, "  confluence-docs update            # download + install latest release")
-			fmt.Fprintln(stdout, "  confluence-docs update --check    # only report whether an update is available")
+			fmt.Fprintln(stdout, "  jira-tickets update            # download + install latest release")
+			fmt.Fprintln(stdout, "  jira-tickets update --check    # only report whether an update is available")
 			fmt.Fprintln(stdout, "")
-			fmt.Fprintln(stdout, "Behavior: resolves the latest release tag from GitHub, compares with the")
-			fmt.Fprintln(stdout, "currently-installed version, and (unless --check) shells out to install.sh")
-			fmt.Fprintln(stdout, "(or install.ps1 on Windows) to perform the upgrade. Credentials and the")
-			fmt.Fprintln(stdout, "home cache are preserved across the update.")
+			fmt.Fprintln(stdout, "Behavior: resolves the latest release tag from GitHub (filtering by the")
+			fmt.Fprintln(stdout, "`jira-v*` tag prefix so releases of sibling skills in the monorepo are")
+			fmt.Fprintln(stdout, "ignored), compares with the currently-installed version, and (unless")
+			fmt.Fprintln(stdout, "--check) shells out to install.sh (or install.ps1 on Windows) to perform")
+			fmt.Fprintln(stdout, "the upgrade. Credentials and the home cache are preserved across the update.")
 			fmt.Fprintln(stdout, "")
 			fmt.Fprintln(stdout, "Exit codes:")
 			fmt.Fprintln(stdout, "  0   up to date (or upgrade succeeded)")
@@ -48,7 +47,7 @@ func runUpdate(args []string, stdout, stderr io.Writer) (int, error) {
 		}
 	}
 
-	latest, err := release.FindLatestByPrefix(repoOwnerRepo, "confluence-v", nil)
+	latest, err := release.FindLatestByPrefix(repoOwnerRepo, tagPrefix, nil)
 	if err != nil {
 		fmt.Fprintln(stderr, "could not resolve latest version:", err)
 		return exitUnknownErr, err
@@ -56,16 +55,16 @@ func runUpdate(args []string, stdout, stderr io.Writer) (int, error) {
 
 	current := version
 	if release.NormalizeVersion(current) == release.NormalizeVersion(latest) {
-		fmt.Fprintf(stdout, "confluence-docs is up to date (%s).\n", current)
+		fmt.Fprintf(stdout, "jira-tickets is up to date (%s).\n", current)
 		return exitOK, nil
 	}
 
 	if checkOnly {
-		fmt.Fprintf(stdout, "current: %s\nlatest:  %s\nrun: confluence-docs update\n", current, latest)
+		fmt.Fprintf(stdout, "current: %s\nlatest:  %s\nrun: jira-tickets update\n", current, latest)
 		return exitUpdateAvailable, nil
 	}
 
-	fmt.Fprintf(stdout, "Updating confluence-docs: %s → %s ...\n", current, latest)
+	fmt.Fprintf(stdout, "Updating jira-tickets: %s → %s ...\n", current, latest)
 
 	// Shell out to the public installer. This works for Linux/macOS via
 	// `curl | bash`. On Windows the equivalent is `iwr | iex` in PowerShell.
@@ -94,4 +93,7 @@ func runUpdate(args []string, stdout, stderr io.Writer) (int, error) {
 	return exitOK, nil
 }
 
-// writeJSON marshals n and writes it to stdout.
+// exitUpdateAvailable is the exit code reserved for "update available" so
+// scripts and CI can distinguish "all good" (0) from "needs upgrade" without
+// parsing output.
+const exitUpdateAvailable = 10

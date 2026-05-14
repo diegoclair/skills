@@ -376,29 +376,6 @@ func TestUpdate_UnknownFlag(t *testing.T) {
 	}
 }
 
-func TestNormalizeVersion(t *testing.T) {
-	cases := []struct {
-		in, want string
-	}{
-		{"v0.3.3", "0.3.3"},
-		{"0.3.3", "0.3.3"},
-		{" v1.0.0 ", "1.0.0"},
-		{"dev", "dev"},
-		// Tag prefix support (v0.13.0+): the GitHub redirect now resolves
-		// /releases/latest to "confluence-v<X.Y.Z>" or "jira-v<X.Y.Z>".
-		// normalizeVersion must strip the prefix so the comparison against
-		// the ldflags-stamped binary version (which carries no prefix) works.
-		{"confluence-v0.13.0", "0.13.0"},
-		{"jira-v0.1.0", "0.1.0"},
-		// Dirty / dev build markers must still survive.
-		{"v0.3.0-3-g734f5ea-dirty", "0.3.0-3-g734f5ea-dirty"},
-	}
-	for _, c := range cases {
-		if got := normalizeVersion(c.in); got != c.want {
-			t.Errorf("normalizeVersion(%q) = %q, want %q", c.in, got, c.want)
-		}
-	}
-}
 
 func TestPage_UnknownVerbListsChildren(t *testing.T) {
 	// The "valid verbs" list should include `children` (canonical) — verifies

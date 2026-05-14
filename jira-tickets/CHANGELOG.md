@@ -1,5 +1,35 @@
 # Changelog — jira-tickets
 
+## v0.2.0 (2026-05-14) — self-update
+
+Adds `jira-tickets update [--check]` — the self-update subcommand parked in v0.1.0.
+
+### How it works
+
+Resolution uses `release.FindLatestByPrefix("diegoclair/skills", "jira-v", nil)` from the shared `pkg/atlassian/release` package — the same code path that powers `confluence-docs update` as of v0.14.0. The function queries the GitHub Releases API (`/repos/diegoclair/skills/releases?per_page=30`), filters on the client by the `jira-v` tag prefix (newest-first response order), and returns the first non-draft, non-prerelease match.
+
+### Why a custom resolver was needed
+
+GitHub's `/releases/latest` redirect is a singleton per repository — it points at whichever release was published with `make_latest: true`. In a monorepo that ships multiple CLIs from distinct tag prefixes (`confluence-v*` and `jira-v*`), only one product can claim that "latest" pointer. Querying the Releases list API and filtering by prefix on the client is the correct pattern for this shape (same approach used by Projektor, Streamdal, and release-please consumers).
+
+### Rate limit
+
+The GitHub unauthenticated REST API allows 60 requests/hour per IP — plenty for interactive `update` or `update --check` calls. CI matrices that call this frequently should pin the version explicitly via the `JIRA_TICKETS_VERSION` env var instead of resolving, to avoid hitting the ceiling.
+
+### Version comparison
+
+`release.NormalizeVersion` strips the tag prefix (`jira-v0.2.0` → `0.2.0`) before comparing against the ldflags-stamped binary version (which carries no prefix). The installed binary reports `v0.2.0`; the GitHub tag is `jira-v0.2.0`; after normalization both become `0.2.0` — equal.
+
+### Exit codes
+
+| Code | Meaning |
+|---|---|
+| 0 | Up to date, or upgrade completed successfully |
+| 10 | `--check` only: an update is available |
+| 3 | Network error or installer failure |
+
+---
+
 ## v0.1.0 (2026-05-14) — initial release with core read + write commands
 
 First public release of `jira-tickets`. Reuses the shared `pkg/atlassian` module (HTTP client, ADF parsing, credentials setup) from `confluence-docs` in the same monorepo.

@@ -23,7 +23,7 @@ func init() {
 
 // version is injected at build time via -ldflags "-X main.version=..."
 // Falls back to the source-tree version when not set via ldflags (dev builds).
-var version = "v0.1.0"
+var version = "v0.2.0"
 
 const (
 	exitOK         = 0
@@ -73,12 +73,7 @@ COMMON FLAGS (any subcommand):
                     making the API call. Skips credential resolution.
 
 UPDATE:
-  jira-tickets does not yet self-update (the shared /releases/latest path
-  is already used by the sibling confluence-docs skill). To upgrade:
-
-    curl -fsSL https://raw.githubusercontent.com/diegoclair/skills/main/jira-tickets/install/install.sh | bash
-
-  Self-update lands in v0.2.0 (GitHub API + tag-prefix filter).
+  jira-tickets update [--check]   Self-update the binary by re-running the install script.
 
 CREDENTIALS:
   Read from ~/.config/atlassian/credentials (shared with confluence-docs)
@@ -109,6 +104,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) (int, error) 
 		return exitOK, nil
 	case "setup":
 		return setup.Run(args[1:], stdin, stdout, stderr)
+	case "update":
+		return runUpdate(args[1:], stdout, stderr)
 	case "myself":
 		return runMyself(args[1:], stdout, stderr)
 	case "search":

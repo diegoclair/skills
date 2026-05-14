@@ -1,6 +1,6 @@
 ---
 name: jira-tickets
-version: 0.1.0
+version: 0.2.0
 description: Token-efficient Jira Cloud assistant for LLM agents. Reads, creates, updates, transitions and links Jira issues via a local Go CLI (10–50× cheaper than the Atlassian MCP for the same operations) and falls back to MCP only for the rare case the CLI can't cover. Use this skill whenever the user mentions Jira, tickets, issues, sprints, epics, story points, transitions, status changes, "move to In Progress", "create a task", "what's the status of PROJ-123", "assign to X", "what's in this sprint" — even when they don't explicitly say "Jira". Stores no project-specific data; everything is fetched fresh from Jira per session. Replies match the user's language.
 allowed-tools: |
   Bash(jira-tickets *)
@@ -16,13 +16,13 @@ allowed-tools: |
 
 # jira-tickets — Jira Cloud assistant
 
-> **v0.1.0 ships the core read + write commands.** Sprint, epic-linking, and self-update remain MCP-fallback for now (see status table below).
+> **v0.2.0 adds self-update.** Sprint and epic-linking remain MCP-fallback for now (see status table below).
 
 ## Overview
 
 Drives Claude against Jira Cloud through a local Go binary that returns **digests, JQL TSV slices, and surgical updates** instead of full ADF round-trips. The same Atlassian token used by the `confluence-docs` skill works here — both read credentials from `~/.config/atlassian/credentials` (with fallback to the per-skill files for back-compat).
 
-## Status (v0.1.0)
+## Status (v0.2.0)
 
 | Operation | Where today |
 |---|---|
@@ -36,7 +36,7 @@ Drives Claude against Jira Cloud through a local Go binary that returns **digest
 | List transitions | ✅ `jira-tickets issue transitions --key K` |
 | Apply transition | ✅ `jira-tickets issue transition --key K --to "In Progress"` |
 | Add comment | ✅ `jira-tickets issue comment --key K --body "..."` (markdown → ADF) |
-| Self-update | ⏳ v0.2.0 (re-run install one-liner for now) |
+| Self-update | ✅ `jira-tickets update` |
 | Epic add/remove child | ⏳ v0.2.0 (MCP fallback) |
 | Sprint move | ⏳ v0.3.0 (MCP fallback) |
 | Project list | ⏳ v0.2.0 (MCP fallback) |
