@@ -1,5 +1,30 @@
 # Changelog — confluence-docs
 
+## v0.11.2 (2026-05-14) — install scripts drop stale `reference/` files
+
+A single targeted fix to the install/update flow. No CLI or skill-content changes.
+
+### Why
+
+After upgrading from a release that shipped reference files like `aliases.md` / `taxonomy.md` / `templates.md` to a release that no longer ships them, the obsolete files would linger forever under `~/.claude/skills/confluence-docs/reference/`. The previous `install.sh` and `install.ps1` only **overwrote** files present in the new archive — they never **removed** files that had been retired between releases. The skill itself ignored them (the canonical reference list lives in `SKILL.md`), but the directory listing grew noisier with every cleanup release and could confuse anyone manually browsing the folder.
+
+### Fix
+
+Both installers now perform a clean-slate replace of the `reference/` directory:
+
+1. Download + extract the release archive into a temp dir (unchanged).
+2. Verify `reference/` exists in the extracted archive (guards against a broken release — if the archive lacks it, the old `reference/` is preserved).
+3. **`rm -rf "$SKILL_DIR/reference"` / `Remove-Item -Recurse -Force $RefDir`** (new step).
+4. Recreate the directory and copy the fresh `*.md` files from the extracted archive.
+
+The binary install (atomic temp-rename to handle ETXTBSY on Linux) and the `SKILL.md` overwrite are unchanged. Credentials at `~/.config/confluence-docs/credentials` and the home cache at `~/.cache/confluence-docs/home.json` are untouched — both live outside `$SKILL_DIR`.
+
+### Migration notes
+
+After running `confluence-docs update` to v0.11.2, the install script will (one-time) clean any stale reference files left from older releases. Subsequent updates stay idempotent. No action needed from the user.
+
+---
+
 ## v0.11.1 (2026-05-14) — repository refactor + test coverage
 
 A housekeeping release with no behavioral changes. The CLI flags, skill contract, on-disk credentials, home cache, and reference file paths are all identical to v0.11.0. The goal was to make the codebase friendlier to outside contributors before opening for community feedback — and to lift test coverage on five files that previously had no dedicated unit tests.

@@ -158,6 +158,13 @@ if [ -f "$EXTRACT_DIR/SKILL.md" ]; then
   SKILL_FILES_OK=$((SKILL_FILES_OK + 1))
 fi
 if [ -d "$EXTRACT_DIR/reference" ]; then
+  # Clean slate: drop any stale reference files from previous installs
+  # (files that existed in older releases but were renamed or removed in
+  # newer ones would otherwise linger forever, since the copy below only
+  # overwrites and never deletes). Safe to run unconditionally here because
+  # we already verified the new reference/ is in the extracted archive,
+  # so we'll always repopulate immediately after.
+  rm -rf "$SKILL_DIR/reference"
   mkdir -p "$SKILL_DIR/reference"
   for f in "$EXTRACT_DIR/reference/"*.md; do
     [ -f "$f" ] || continue

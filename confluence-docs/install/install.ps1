@@ -143,6 +143,14 @@ if (Test-Path $SkillMd) {
 $ExtractedRef = Join-Path $ExtractDir 'reference'
 if (Test-Path $ExtractedRef) {
     $RefDir = Join-Path $SkillDir 'reference'
+    # Clean slate: drop any stale reference files from previous installs
+    # (files that existed in older releases but were renamed or removed in
+    # newer ones would otherwise linger forever, since the copy below only
+    # overwrites and never deletes). Safe to run here because the new
+    # reference/ is already verified present in the extracted archive.
+    if (Test-Path $RefDir) {
+        Remove-Item -Recurse -Force $RefDir
+    }
     New-Item -ItemType Directory -Force -Path $RefDir | Out-Null
     Get-ChildItem -Path $ExtractedRef -Filter '*.md' | ForEach-Object {
         Copy-Item -Path $_.FullName -Destination (Join-Path $RefDir $_.Name) -Force
