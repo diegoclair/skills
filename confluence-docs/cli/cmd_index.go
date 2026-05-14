@@ -209,9 +209,15 @@ func runIndexAdd(args []string, stdout, stderr io.Writer) (int, error) {
 		return exitInputErr, errInvalidUsage
 	}
 
-	client, ok := buildClient(cloud, email, token, stderr)
-	if !ok {
-		return exitUnknownErr, nil
+	// In --input file mode, no HTTP round-trip happens (read from file,
+	// write to file or stdout); credentials aren't needed.
+	var client *adf.ConfluenceClient
+	if inputFile == "" {
+		var ok bool
+		client, ok = buildClient(cloud, email, token, stderr)
+		if !ok {
+			return exitUnknownErr, nil
+		}
 	}
 
 	ctx, err := loadIndexPage(inputFile, client)
@@ -303,9 +309,15 @@ func runIndexRemove(args []string, stdout, stderr io.Writer) (int, error) {
 		return exitInputErr, errInvalidUsage
 	}
 
-	client, ok := buildClient(cloud, email, token, stderr)
-	if !ok {
-		return exitUnknownErr, nil
+	// In --input file mode, no HTTP round-trip happens (read from file,
+	// write to file or stdout); credentials aren't needed.
+	var client *adf.ConfluenceClient
+	if inputFile == "" {
+		var ok bool
+		client, ok = buildClient(cloud, email, token, stderr)
+		if !ok {
+			return exitUnknownErr, nil
+		}
 	}
 
 	ctx, err := loadIndexPage(inputFile, client)
