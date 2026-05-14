@@ -105,3 +105,8 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Stray binary from `go build ./...` run inside confluence-docs/cli/
+# (Go names the binary after the package directory; we want it in bin/)
+confluence-docs/cli/cli
+jira-tickets/cli/cli
