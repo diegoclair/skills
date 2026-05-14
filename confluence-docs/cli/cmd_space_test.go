@@ -13,7 +13,7 @@ import (
 	"testing"
 
 	"github.com/lybel-app/skills/pkg/atlassian/adf"
-	"github.com/lybel-app/skills/confluence-docs/cli/setup"
+	"github.com/lybel-app/skills/pkg/atlassian/setup"
 )
 
 // ── test helpers ──────────────────────────────────────────────────────────────

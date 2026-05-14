@@ -1,5 +1,65 @@
 # Changelog — confluence-docs
 
+## v0.12.0 (2026-05-14) — monorepo refactor: shared `pkg/atlassian` module
+
+Repository-level refactor preparing the codebase for a sibling **`jira-tickets`** skill (separate binary, same Atlassian token, same ADF format, same packaging convention). **Zero behavior change for end users** — the `confluence-docs` binary, CLI flags, skill contract, and reference files are byte-for-byte identical to v0.11.3. The change is entirely about layout and shared code.
+
+### What changed (under the hood)
+
+The 28 ADF parsing/rendering files and the 2 credentials-setup files were the obvious shared layer: Jira issues and Confluence pages both encode bodies/descriptions as ADF, and both authenticate against the same Atlassian token. Extracting them now avoids duplicating ~3,000 lines of `adf/` + ~1,700 lines of `setup/` once the Jira skill lands.
+
+New layout:
+
+```
+skills/                              (repo root)
+├── go.work                          NEW — committed; ties the modules together
+├── pkg/atlassian/                   NEW shared module
+│   ├── go.mod
+│   ├── adf/                         moved from confluence-docs/cli/adf/
+│   └── setup/                       moved from confluence-docs/cli/setup/
+└── confluence-docs/
+    └── cli/
+        ├── go.mod                   adds replace + require for the local lib
+        └── *.go                     21 imports updated to the new path
+```
+
+### Resolution mechanism — `replace` directive + `go.work`
+
+`confluence-docs/cli/go.mod` ends with:
+
+```
+require github.com/lybel-app/skills/pkg/atlassian v0.0.0-...
+replace github.com/lybel-app/skills/pkg/atlassian => ../../pkg/atlassian
+```
+
+`go.work` at the repo root lists `pkg/atlassian` and `confluence-docs/cli`. The replace lets `go build` and `make` work inside `confluence-docs/cli/` on its own (CI keeps working unchanged); the workspace gives IDEs/LSPs the same view contributors get. When `pkg/atlassian` eventually publishes its own semver-tagged releases, the replace goes away and the require pins a real version.
+
+`go.work` and `go.work.sum` are committed — the default Go `.gitignore` template ignores them because that's the right call for single-module repos; for this multi-module monorepo, committing is the convention so contributors don't have to run `go work init` after cloning.
+
+### Why a minor bump (0.12.0) and not a patch
+
+End users see nothing. Contributors do — the import paths moved, there are now three `go.mod` files (root workspace + 2 module roots), and the directory layout signals "this is a monorepo holding multiple skills." That's the kind of contract change semver minor bumps exist for.
+
+### What this unlocks
+
+- **`jira-tickets` skill** can now drop into `jira-tickets/cli/` and reuse `pkg/atlassian/adf/` + `pkg/atlassian/setup/` without duplication.
+- **Per-skill release pipelines**: `release.yml` continues to tag and ship `confluence-docs` on `v*` tags; when `jira-tickets` arrives, a sibling workflow will fire on a different tag prefix. (Tag convention migration to `confluence-v*` / `jira-v*` will happen alongside the first Jira release.)
+- **Shared credential store**: a future patch can migrate `~/.config/confluence-docs/credentials` to `~/.config/atlassian/credentials` so installing the Jira skill doesn't require re-pasting the same API token.
+
+### Verification
+
+- `pkg/atlassian/adf`: `go build` + `go test -count=1 ./...` ✅
+- `pkg/atlassian/setup`: `go build` + `go test -count=1 ./...` ✅
+- `confluence-docs/cli`: `go build` + `go test -count=1 ./...` ✅
+- `make build` inside `confluence-docs/cli/` produces a working binary (replace directive resolves locally even outside the workspace)
+- `release.yml` CI path unchanged — `make build-all` from inside `confluence-docs/cli/` still works because of the same replace directive
+
+### Migration notes
+
+`confluence-docs update` brings the v0.12.0 binary; SKILL.md and reference files are refreshed in place. Nothing to do. Contributors who already cloned the repo: `git pull && go work sync && (cd pkg/atlassian && go mod tidy) && (cd confluence-docs/cli && go mod tidy)`.
+
+---
+
 ## v0.11.3 (2026-05-14) — `page reorder --dry-run`, `--table-move-row` in help, CI bump
 
 ### `page reorder --dry-run`

@@ -1,6 +1,6 @@
 ---
 name: confluence-docs
-version: 0.11.3
+version: 0.12.0
 description: Navigation assistant for the project's Confluence knowledge base. Searches, creates, lists, and updates pages via natural language using the local Go CLI as the primary tool and the Atlassian MCP as fallback. Use this skill whenever the user mentions documentation, wiki, knowledge base, processes, partners, decisions, roadmap, strategy, ICPs, brand, design system, governance, or asks "where is X", "find the page for Y", "create a page for Z", "list X", "add this", "document this process", "update the page for Q", "what's the status of Y", "is there a doc about Z", "add advisor/partner/investor X" — even if they don't explicitly mention "Confluence". Stores no specific data; fresh state lives in Confluence and is fetched per session via local CLI cache. Replies match the user's language and tone.
 allowed-tools: |
   Bash(confluence-docs *)
@@ -282,7 +282,7 @@ confluence-docs update --check    # only report whether an update is available
 - `--check`: reports `current → latest` and exits (`0` = up to date, `10` = update available).
 - Without `--check`: shells out to the public installer (install.sh on Linux/macOS, install.ps1 on Windows). The installer overwrites the binary, SKILL.md, and reference files atomically. **Credentials and the home cache are preserved** — no re-setup needed.
 
-For non-technical users, `confluence-docs update` is enough — no URL to remember. Reply in the user's language with the result, e.g. "Already on the latest version (v0.11.3)" or "Updated from v0.11.2 → v0.11.3".
+For non-technical users, `confluence-docs update` is enough — no URL to remember. Reply in the user's language with the result, e.g. "Already on the latest version (v0.12.0)" or "Updated from v0.11.3 → v0.12.0".
 
 **When to suggest an update proactively:** if the user reports a CLI behavior that you know was changed in a later release (e.g. they say "this flag doesn't exist" for a flag you know exists), check `confluence-docs --version` and `confluence-docs update --check` before assuming a real bug.
 

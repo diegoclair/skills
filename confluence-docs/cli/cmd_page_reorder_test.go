@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lybel-app/skills/confluence-docs/cli/setup"
+	"github.com/lybel-app/skills/pkg/atlassian/setup"
 )
 
 // runReorderCmd is a thin helper that sets up env/config and calls
