@@ -281,8 +281,8 @@ func TestSpaceUse_SwitchesActiveSpace(t *testing.T) {
 	}
 	// Two calls: list spaces + get homepage title for confirmation.
 	pageMetaBody, _ := json.Marshal(map[string]any{
-		"id":    "20001",
-		"title": "Marketing Home",
+		"id":      "20001",
+		"title":   "Marketing Home",
 		"version": map[string]any{"number": 1},
 	})
 	responses := []struct {

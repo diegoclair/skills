@@ -1,7 +1,7 @@
 # Install Guide for AI Agents
 
 > **Audience:** AI assistants helping a human install the `confluence-docs` skill.
-> Humans installing it themselves should read the [main README](./../README.md#instalação).
+> Humans installing it themselves should read the [main README](../README.md).
 
 Self-contained, low-ambiguity, deterministic exit codes. Keep it that way.
 

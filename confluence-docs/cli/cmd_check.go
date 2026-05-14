@@ -32,9 +32,9 @@ import (
 
 // checkResult is the JSON output of `confluence-docs check`.
 type checkResult struct {
-	Exists     bool            `json:"exists"`
-	Similar    []checkSimilar  `json:"similar"`
-	Suggestion string          `json:"suggestion"` // "create" | "update_existing"
+	Exists     bool           `json:"exists"`
+	Similar    []checkSimilar `json:"similar"`
+	Suggestion string         `json:"suggestion"` // "create" | "update_existing"
 }
 
 // checkSimilar is one entry in the similar list.
@@ -53,8 +53,8 @@ func runCheck(args []string, stdout, stderr io.Writer) (int, error) {
 		tags      string
 		threshold float64 = 0.4
 		space     string
-		limit     int    = 20
-		asJSON    bool   = true // default output is JSON for machine consumption
+		limit     int  = 20
+		asJSON    bool = true // default output is JSON for machine consumption
 	)
 
 	remaining, cloud, email, token, err := parseCommonPageFlags(args)

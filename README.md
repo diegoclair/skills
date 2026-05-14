@@ -66,9 +66,9 @@ Reopen Claude Code and ask: *"where is the governance page?"*, *"create a new pa
 
 Paste this into any AI agent:
 
-> I want to install the `confluence-docs` skill. Follow the runbook at https://github.com/lybel-app/skills/blob/main/confluence-docs/INSTALL_FOR_AI.md
+> I want to install the `confluence-docs` skill. Follow the runbook at https://github.com/lybel-app/skills/blob/main/confluence-docs/reference/install-for-ai.md
 
-The [`INSTALL_FOR_AI.md`](./confluence-docs/INSTALL_FOR_AI.md) is a runbook with deterministic exit codes and token-handling safety rules.
+The [`reference/install-for-ai.md`](./confluence-docs/reference/install-for-ai.md) is a runbook with deterministic exit codes and token-handling safety rules.
 
 ---
 

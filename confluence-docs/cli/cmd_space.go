@@ -28,8 +28,8 @@ const spacesCacheTTL = 1 * time.Hour
 
 // spacesCacheEntry is what we store in the JSON cache file.
 type spacesCacheEntry struct {
-	FetchedAt time.Time          `json:"fetchedAt"`
-	Spaces    []adf.SpaceResult  `json:"spaces"`
+	FetchedAt time.Time         `json:"fetchedAt"`
+	Spaces    []adf.SpaceResult `json:"spaces"`
 }
 
 // spacesCachePath returns the path to the spaces cache file.

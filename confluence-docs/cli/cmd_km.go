@@ -60,8 +60,8 @@ type kmPage struct {
 	Title       string
 	Tipo        string
 	Tags        []string
-	FaseTag     string  // "fase-final-checkout-universal" if applicable (kept in Tags)
-	RealAnomaly string  // empty when none
+	FaseTag     string // "fase-final-checkout-universal" if applicable (kept in Tags)
+	RealAnomaly string // empty when none
 	Confidence  string
 }
 

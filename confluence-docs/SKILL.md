@@ -1,5 +1,6 @@
 ---
 name: confluence-docs
+version: 0.11.0
 description: Navigation assistant for the project's Confluence knowledge base. Searches, creates, lists, and updates pages via natural language using the local Go CLI as the primary tool and the Atlassian MCP as fallback. Use this skill whenever the user mentions documentation, wiki, knowledge base, processes, partners, decisions, roadmap, strategy, ICPs, brand, design system, governance, or asks "where is X", "find the page for Y", "create a page for Z", "list X", "add this", "document this process", "update the page for Q", "what's the status of Y", "is there a doc about Z", "add advisor/partner/investor X" — even if they don't explicitly mention "Confluence". Stores no specific data; fresh state lives in Confluence and is fetched per session via local CLI cache. Replies match the user's language and tone.
 allowed-tools: |
   Bash(confluence-docs *)
