@@ -11,8 +11,9 @@
 | Skill | Summary | Docs |
 |---|---|---|
 | **`confluence-docs`** | Search, create, classify and update Confluence Cloud pages in natural language. Ships a local Go CLI that returns page digests / single sections instead of full ADF bodies — 10–50× cheaper in tokens than the raw MCP path (which remains as fallback). Includes a `km` subcommand that consolidates a whole space into a typed Knowledge Map, owner `@mention` resolution, real Confluence labels from `:::properties` tags, smart links, and a canonical 5-doc-types spec (`reference/doc-types.md`). | [SKILL.md](./confluence-docs/SKILL.md) |
+| **`jira-tickets`** (scaffold) | Token-efficient Jira Cloud assistant. Shares `pkg/atlassian` with `confluence-docs` (same token, same ADF format) and will ship `search "JQL"`, `issue digest`, `issue get`, `issue create/update/transition/comment`, `epic add-child`, `sprint move` over the next minor releases. **v0.1.0 is structure-only** — actual Jira ops fall back to the Atlassian MCP for now. | [SKILL.md](./jira-tickets/SKILL.md) |
 
-Next candidates: `jira-tickets`, `figma-files`, `analytics`.
+Next candidates: `figma-files`, `analytics`.
 
 ---
 
