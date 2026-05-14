@@ -1,5 +1,43 @@
 # Changelog — confluence-docs
 
+## v0.11.3 (2026-05-14) — `page reorder --dry-run`, `--table-move-row` in help, CI bump
+
+### `page reorder --dry-run`
+
+`page reorder` is the verb agents use to reposition a page among its siblings (`--before`/`--after`/`--append-to`). Without a dry-run, an agent that misreads the intended position can move the page on the first try and surprise the user. Real cases: user reorders a tree manually, asks the agent to add a new sibling near the top, the agent ends up appending it to the bottom; or the user asks "second-most-important" and the agent reaches for `--append-to`, landing it at position six.
+
+This release adds `--dry-run` to `page reorder`. It prints the intended JSON action and exits 0 without making the API call:
+
+```bash
+$ confluence-docs page reorder --page-id 100 --after 200 --dry-run
+{"status":"dry-run","pageId":"100","position":"after","targetId":"200"}
+```
+
+Implementation notes:
+
+- `--dry-run` also **skips credential resolution** (`buildClient` is bypassed when `dryRun == true`). The whole point of dry-run is intent preview, and the output is derivable from the flags alone — the API doesn't add information. This mirrors the `index --input` policy from v0.11.1.
+- The existing test `TestPageReorder_DryRun_NoHTTPCall` was updated: it previously documented the "rejected as unknown flag" behaviour and now asserts the implemented behaviour (exit 0, JSON output with `status:"dry-run"`, zero HTTP calls).
+- Help text in both `cmd_page_reorder.go --help` and the top-level `--help` was updated.
+
+### `--table-move-row` added to top-level `--help`
+
+The flag was implemented in v0.11.0 but never made it into the `helpText` constant — agents reading `confluence-docs --help` had no way to learn about it. Now appears in three places: EDIT OPERATIONS, EDIT FLAGS (`--position N`), and the `page apply` operations list.
+
+### CI: GitHub Actions versions bumped to Node-24-compatible
+
+`actions/checkout@v4 → v6`, `actions/setup-go@v5 → v6`, `softprops/action-gh-release@v2 → v3`. The previous versions were running on Node.js 20, which GitHub announced would be force-migrated to Node 24 in June 2026 and removed in September 2026. Moving now avoids the warning and the future breakage.
+
+### Decisions parked
+
+- **`lint` warning for unknown ADF node types**: discussed and skipped. Would require an allow-list of the ~35 canonical ADF node types from Atlassian's spec, which goes out of date as Atlassian adds new types (decisionItem, taskItem, mediaSingle, layoutSection variants, etc.). The current lenient behaviour — only validating `heading`, `table`, `bulletList`, `orderedList`, `text`, and link marks — is intentional and stays. If a real false-negative shows up in practice, revisit then.
+- **Suporte a outros caminhos de instalação** (Cursor, Continue) além de `~/.claude/skills/`: parking até ter demanda concreta de usuário fora da audiência Claude Code / Desktop atual.
+
+### Migration notes
+
+`confluence-docs update` brings the new binary; SKILL.md and reference files are refreshed in place. Nothing else needs attention.
+
+---
+
 ## v0.11.2 (2026-05-14) — install scripts drop stale `reference/` files
 
 A single targeted fix to the install/update flow. No CLI or skill-content changes.

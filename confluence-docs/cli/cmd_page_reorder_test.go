@@ -266,19 +266,22 @@ func TestPageReorder_DryRun_NoHTTPCall(t *testing.T) {
 	dir := setupReorderEnv(t)
 	_ = dir
 
-	// --dry-run is declared in the help text but cmd_page_reorder.go currently
-	// treats it as an unknown flag and exits non-zero. This test validates the
-	// actual behaviour: unknown flag → error, no HTTP call.
+	// --dry-run prints the intended action as JSON and exits 0 without
+	// making any HTTP call. This is what an agent runs to preview the
+	// reorder for the user to confirm before the real call.
 	rt := &mockRoundTripper{statusCode: 200}
-	_, _, code := runReorderCmd(t, dir, rt, "--page-id", "111", "--before", "222", "--dry-run")
-	// dry-run is not yet implemented — it lands in the default/unknown-flag branch.
-	// The important assertion is: no real HTTP call was made.
-	if rt.calls > 0 {
-		t.Errorf("expected no HTTP calls, but RoundTripper was called %d time(s)", rt.calls)
+	out, _, code := runReorderCmd(t, dir, rt, "--page-id", "111", "--before", "222", "--dry-run")
+	if code != exitOK {
+		t.Fatalf("expected exit 0 for --dry-run, got %d", code)
 	}
-	// Exit code must be non-zero (flag rejected).
-	if code == exitOK {
-		t.Errorf("expected non-zero exit for unimplemented --dry-run flag, got 0")
+	if rt.calls != 0 {
+		t.Errorf("expected zero HTTP calls in dry-run, got %d", rt.calls)
+	}
+	if !strings.Contains(out, `"status":"dry-run"`) {
+		t.Errorf("expected dry-run status marker in output, got: %q", out)
+	}
+	if !strings.Contains(out, `"pageId":"111"`) || !strings.Contains(out, `"targetId":"222"`) || !strings.Contains(out, `"position":"before"`) {
+		t.Errorf("expected pageId/targetId/position in dry-run output, got: %q", out)
 	}
 }
 

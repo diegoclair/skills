@@ -8,6 +8,7 @@ import (
 func runPageReorder(args []string, stdout, stderr io.Writer) (int, error) {
 	var pageID string
 	var before, after, appendTo string
+	var dryRun bool
 
 	remaining, cloud, email, token, err := parseCommonPageFlags(args)
 	if err != nil {
@@ -18,6 +19,8 @@ func runPageReorder(args []string, stdout, stderr io.Writer) (int, error) {
 	for i := 0; i < len(remaining); i++ {
 		a := remaining[i]
 		switch a {
+		case "--dry-run":
+			dryRun = true
 		case "--page-id":
 			if i+1 >= len(remaining) {
 				fmt.Fprintln(stderr, "--page-id requires a value")
@@ -53,6 +56,7 @@ func runPageReorder(args []string, stdout, stderr io.Writer) (int, error) {
 			fmt.Fprintln(stdout, "  --before TARGET_ID     place page right before TARGET (same parent)")
 			fmt.Fprintln(stdout, "  --after  TARGET_ID     place page right after  TARGET (same parent)")
 			fmt.Fprintln(stdout, "  --append-to PARENT_ID  append as last child of PARENT (re-parents)")
+			fmt.Fprintln(stdout, "  --dry-run              print intended action as JSON; no HTTP call")
 			fmt.Fprintln(stdout, "")
 			fmt.Fprintln(stdout, "Exactly one of --before / --after / --append-to is required. Body and")
 			fmt.Fprintln(stdout, "title are NOT modified — use 'page move' for rename or reparent-to-")
@@ -88,6 +92,15 @@ func runPageReorder(args []string, stdout, stderr io.Writer) (int, error) {
 	if picked > 1 {
 		fmt.Fprintln(stderr, "page reorder: --before, --after, --append-to are mutually exclusive")
 		return exitInputErr, errInvalidUsage
+	}
+
+	// --dry-run skips both buildClient and the HTTP call. The point of dry-run
+	// is to let a caller (typically the agent) confirm intent before applying;
+	// requiring credentials for that defeats the purpose, and the output is
+	// always derivable from the flags alone (the API doesn't add information).
+	if dryRun {
+		fmt.Fprintf(stdout, `{"status":"dry-run","pageId":%q,"position":%q,"targetId":%q}`+"\n", pageID, position, targetID)
+		return exitOK, nil
 	}
 
 	client, ok := buildClient(cloud, email, token, stderr)

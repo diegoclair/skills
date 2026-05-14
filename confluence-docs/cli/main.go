@@ -15,7 +15,7 @@ import (
 
 // version is injected at build time via -ldflags "-X main.version=..."
 // Falls back to the source-tree version when not set via ldflags (dev builds).
-var version = "v0.11.2"
+var version = "v0.11.3"
 
 const helpText = `confluence-docs — Confluence ADF toolkit: convert, edit, lint, and publish pages.
 
@@ -71,6 +71,11 @@ EDIT OPERATIONS (exactly one required):
   --table-update-row "Heading" --match-cell "text" --row "a|b|c"  Replace a row.
   --table-update-cell "Heading" --match-cell "text" --col-name "Header" --value "v"
                                                    Update a single cell by column name.
+  --table-move-row "Heading" --match-cell "text" --position N
+                                                   Move a row to position N (1-indexed
+                                                   across data rows; header at row 0 is
+                                                   never moved; out-of-range clamps to
+                                                   first/last).
   Any --match-cell flag also accepts --match-col COL --match-value V to match
   against an arbitrary column (located by header name) instead of the first
   column. --match-cell and --match-col are mutually exclusive.
@@ -82,6 +87,7 @@ EDIT FLAGS:
       --if-missing   (--table-add-row) Skip silently if row with same first cell exists.
       --col-name "Header"  (--table-update-cell) Column header text to identify target cell.
       --value "text"       (--table-update-cell) New cell content.
+      --position N         (--table-move-row) New row position (1-indexed across data rows).
       --match-col "Header" (table ops) Column header used for row match.
       --match-value "text" (table ops) Value to find in --match-col.
                           --match-col + --match-value together replace --match-cell
@@ -130,6 +136,7 @@ PAGE VERBS:
                  --table-remove-row "Heading" --match-cell "text"
                  --table-update-row "Heading" --match-cell "text" --row "a|b|c"
                  --table-update-cell "Heading" --match-cell "text" --col-name "Header" --value "v"
+                 --table-move-row   "Heading" --match-cell "text" --position N
                  Each --match-cell may be replaced by --match-col COL --match-value V
                  to match an arbitrary column (e.g. when col 1 holds a rank/ID).
                  --multi OPS.json    Apply many ops atomically in 1 GET+PUT.
@@ -142,13 +149,14 @@ PAGE VERBS:
                (--parent-id). At least one of the two is required. The body
                is preserved (refetched and re-PUT, since v2 PUT requires it).
   page reorder --page-id ID (--before TARGET_ID | --after TARGET_ID
-               | --append-to NEW_PARENT_ID)
+               | --append-to NEW_PARENT_ID) [--dry-run]
                Reposition a page among its siblings (--before / --after) or
                append it as the last child of a new parent (--append-to).
                Wraps the v1 endpoint
                PUT /wiki/rest/api/content/{id}/move/{position}/{targetId}
                since v2 doesn't expose sibling-order control. Body and
-               title are not touched.
+               title are not touched. --dry-run prints the intended JSON
+               action without making the API call (no creds required).
   page delete  --page-id ID [--yes]
                Trash a page (soft delete; restorable from Confluence trash).
                --yes is required to confirm.
