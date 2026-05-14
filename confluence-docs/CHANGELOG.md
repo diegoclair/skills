@@ -1,5 +1,41 @@
 # Changelog — confluence-docs
 
+## v0.12.2 (2026-05-14) — `update` follows multi-hop redirect chains
+
+Single-fix release. `confluence-docs update` and `confluence-docs update --check` now correctly resolve the latest release tag even when GitHub returns multiple redirects (e.g. right after a repo transfer, when `lybel-app/skills/releases/latest` first redirects to `diegoclair/skills/releases/latest`, then resolves to `diegoclair/skills/releases/tag/v0.12.1`).
+
+### The bug
+
+`resolveLatestVersion` in `cmd_update.go` set `CheckRedirect: http.ErrUseLastResponse` and read only the **first** `Location` header. Before the transfer this worked because GitHub answered with a single redirect straight to `/releases/tag/<tag>`. After the transfer there are two hops, and only the first one (the owner rename) ever made it into the parser — which then errored out with:
+
+```
+could not resolve latest version: unexpected Location format: https://github.com/diegoclair/skills/releases/latest
+```
+
+The v0.11.x and v0.12.0/v0.12.1 binaries that users already have installed pointing at `lybel-app/skills` are stuck on this error until they get the new binary by some other path. `install.sh` was always immune (it shells `curl -fsSL` which follows the full chain by default), so the rescue path is to re-run the install one-liner.
+
+### The fix
+
+Let the Go HTTP client follow redirects (default cap is 10) and inspect `resp.Request.URL` — the URL after the last hop, regardless of how many it took. If that URL contains `/tag/<tag>` we're done; otherwise emit a clear error.
+
+`install.sh` and `install.ps1` already worked this way, so the binary is now consistent with them.
+
+### Rescue path for installs stuck on v0.11.x/v0.12.0/v0.12.1
+
+Run the install one-liner once (this bypasses `update` entirely):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/diegoclair/skills/main/confluence-docs/install/install.sh | bash
+```
+
+After that, `confluence-docs update` resumes working because the new binary points at `diegoclair/skills` natively (no transfer redirect needed) **and** carries this fix.
+
+### Migration notes
+
+None for fresh installs. For existing installs, see "Rescue path" above.
+
+---
+
 ## v0.12.1 (2026-05-14) — monorepo refactor + repo moved to `diegoclair/skills`
 
 Combines two structural changes; **zero behavior change for end users**. The `confluence-docs` binary, CLI flags, skill contract, and reference files are byte-for-byte identical to v0.11.3.

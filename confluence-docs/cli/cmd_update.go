@@ -96,33 +96,36 @@ func runUpdate(args []string, stdout, stderr io.Writer) (int, error) {
 }
 
 // resolveLatestVersion returns the latest release tag for repo ("owner/repo")
-// by following GitHub's /releases/latest redirect. Same approach as install.sh.
+// by following GitHub's /releases/latest redirect chain to its final URL,
+// which always ends in /releases/tag/<tag>.
+//
+// The naive single-redirect approach (CheckRedirect: ErrUseLastResponse +
+// read first Location header) breaks when a repo has been transferred:
+// GitHub returns the owner-renamed URL as the first Location, then a
+// second redirect resolves "latest" → "tag/<tag>". Following the full
+// chain is what install.sh has always done (curl -fsSL is default-follow),
+// so this just brings the Go binary in line.
+//
+// We let the Go HTTP client follow redirects (default cap is 10) and
+// inspect resp.Request.URL — that's the URL after the last redirect,
+// regardless of how many hops it took.
 func resolveLatestVersion(repo string) (string, error) {
 	url := fmt.Sprintf("https://github.com/%s/releases/latest", repo)
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-		// Don't follow the redirect — we want to read the Location header.
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
-	}
+	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Get(url)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
-	loc := resp.Header.Get("Location")
-	if loc == "" {
-		return "", fmt.Errorf("no Location header (status %d) — repo may be empty or unreachable", resp.StatusCode)
-	}
-	// Location looks like https://github.com/owner/repo/releases/tag/v0.3.3
-	idx := strings.LastIndex(loc, "/tag/")
+
+	finalURL := resp.Request.URL.String()
+	idx := strings.LastIndex(finalURL, "/tag/")
 	if idx < 0 {
-		return "", fmt.Errorf("unexpected Location format: %s", loc)
+		return "", fmt.Errorf("unexpected final URL after redirects (status %d): %s — repo may have no releases yet", resp.StatusCode, finalURL)
 	}
-	tag := strings.TrimSpace(loc[idx+len("/tag/"):])
+	tag := strings.TrimSpace(finalURL[idx+len("/tag/"):])
 	if tag == "" {
-		return "", fmt.Errorf("empty tag in Location: %s", loc)
+		return "", fmt.Errorf("empty tag in final URL: %s", finalURL)
 	}
 	return tag, nil
 }
