@@ -36,20 +36,24 @@ $Platform = "windows-$Arch"
 if ($env:JIRA_TICKETS_VERSION) {
     $Version = $env:JIRA_TICKETS_VERSION
 } else {
-    # Follow the GitHub /releases/latest redirect to find the tag.
+    # This repo (diegoclair/skills) hosts multiple skills behind tag prefixes
+    # (confluence-v*, jira-v*). The /releases/latest redirect always points
+    # at whichever release was published with make_latest:true — that's the
+    # confluence-docs skill, not us. So we have to list releases via the
+    # GitHub API and pick the most recent one whose tag starts with "jira-v".
+    $ReleasesApi = "https://api.github.com/repos/$Repo/releases?per_page=30"
     try {
-        $Resp = Invoke-WebRequest -Uri "$GithubBase/releases/latest" `
-            -MaximumRedirection 0 -ErrorAction SilentlyContinue
-        $Location = $Resp.Headers['Location']
-        $Version = $Location -replace '.*/tag/', ''
-    } catch {
-        $Location = $_.Exception.Response.Headers['Location']
-        if ($Location) {
-            $Version = $Location -replace '.*/tag/', ''
+        $Releases = Invoke-RestMethod -Uri $ReleasesApi -UseBasicParsing
+        $JiraRelease = $Releases | Where-Object { $_.tag_name -like "jira-v*" } | Select-Object -First 1
+        if ($JiraRelease) {
+            $Version = $JiraRelease.tag_name
         }
+    } catch {
+        Write-Error "Could not query GitHub API: $($_.Exception.Message)"
+        exit 1
     }
     if (-not $Version) {
-        Write-Error "Could not determine latest version. Set `$env:JIRA_TICKETS_VERSION explicitly."
+        Write-Error "Could not find any jira-v* release on $Repo. Set `$env:JIRA_TICKETS_VERSION explicitly."
         exit 1
     }
 }

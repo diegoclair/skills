@@ -65,13 +65,23 @@ PLATFORM="${os}-${arch}"
 if [ -n "$JIRA_TICKETS_VERSION" ]; then
   VERSION="$JIRA_TICKETS_VERSION"
 else
-  # Resolve the latest release tag via GitHub redirect.
-  LATEST_URL="$GITHUB_BASE/releases/latest"
+  # This repo (diegoclair/skills) hosts multiple skills behind tag prefixes
+  # (confluence-v*, jira-v*). The /releases/latest redirect always points
+  # at whichever release was published with make_latest:true — that's the
+  # confluence-docs skill, not us. So we can't follow that redirect; we
+  # have to list releases via the GitHub API and pick the most recent
+  # one whose tag starts with "jira-v".
+  RELEASES_API="https://api.github.com/repos/$REPO/releases?per_page=30"
   if command -v curl >/dev/null 2>&1; then
-    VERSION="$(curl -fsSL -o /dev/null -w '%{url_effective}' "$LATEST_URL" 2>/dev/null | sed 's|.*/tag/||')" || true
+    # Extract the first tag_name that starts with "jira-v". GitHub returns
+    # releases newest-first by default, so the first match is the latest.
+    VERSION="$(curl -fsSL "$RELEASES_API" 2>/dev/null \
+      | grep -oE '"tag_name":[[:space:]]*"jira-v[^"]+"' \
+      | head -1 \
+      | sed 's/.*"\(jira-v[^"]*\)"/\1/')"
   fi
-  if [ -z "$VERSION" ] || [ "$VERSION" = "$LATEST_URL" ]; then
-    die "could not determine latest version; set JIRA_TICKETS_VERSION explicitly"
+  if [ -z "$VERSION" ]; then
+    die "could not find any jira-v* release on $REPO; set JIRA_TICKETS_VERSION explicitly"
   fi
 fi
 
