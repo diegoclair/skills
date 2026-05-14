@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lybel-app/skills/confluence-docs/cli/adf"
+	"github.com/lybel-app/skills/pkg/atlassian/adf"
 )
 
 func runHome(args []string, stdout, stderr io.Writer) (int, error) {

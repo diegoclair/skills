@@ -16,9 +16,13 @@
 coverage.out
 coverage.html
 
-# Go workspace file
-go.work
-go.work.sum
+# Go workspace file — committed in this repo.
+# This is a multi-module monorepo (pkg/atlassian + confluence-docs/cli +
+# future jira-tickets/cli); contributors need a shared workspace so IDE/LSP
+# resolves the local shared lib without re-running `go work init`. The
+# default Go template ignores go.work because it's the right call for
+# single-module repos; for monorepos like this one, committing is the
+# convention.
 
 # Dependency directories
 vendor/

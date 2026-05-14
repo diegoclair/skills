@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/lybel-app/skills/confluence-docs/cli/adf"
+	"github.com/lybel-app/skills/pkg/atlassian/adf"
 )
 
 // runPage handles the `page` subcommand with verbs: get, upload, create.

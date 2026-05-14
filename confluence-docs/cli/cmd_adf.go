@@ -5,7 +5,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/lybel-app/skills/confluence-docs/cli/adf"
+	"github.com/lybel-app/skills/pkg/atlassian/adf"
 )
 
 // runADF parses adf-subcommand flags and performs the conversion.

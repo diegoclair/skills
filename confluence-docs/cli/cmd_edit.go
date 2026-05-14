@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/lybel-app/skills/confluence-docs/cli/adf"
+	"github.com/lybel-app/skills/pkg/atlassian/adf"
 )
 
 // editOp identifies which operation the edit subcommand will apply.

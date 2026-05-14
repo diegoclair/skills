@@ -5,7 +5,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/lybel-app/skills/confluence-docs/cli/adf"
+	"github.com/lybel-app/skills/pkg/atlassian/adf"
 )
 
 func runLint(args []string, stdin io.Reader, stdout, stderr io.Writer) (int, error) {

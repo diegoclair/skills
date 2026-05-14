@@ -5,7 +5,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/lybel-app/skills/confluence-docs/cli/adf"
+	"github.com/lybel-app/skills/pkg/atlassian/adf"
 )
 
 func writeJSON(n adf.Node, pretty bool, stdout, stderr io.Writer) (int, error) {
