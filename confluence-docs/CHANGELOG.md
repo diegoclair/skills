@@ -1,5 +1,55 @@
 # Changelog — confluence-docs
 
+## v0.11.1 (2026-05-14) — repository refactor + test coverage
+
+A housekeeping release with no behavioral changes. The CLI flags, skill contract, on-disk credentials, home cache, and reference file paths are all identical to v0.11.0. The goal was to make the codebase friendlier to outside contributors before opening for community feedback — and to lift test coverage on five files that previously had no dedicated unit tests.
+
+### CLI source — split monolithic `main.go`
+
+- **`main.go` reduced from 4,359 → 335 lines.** Keeps `main()`, the `run()` dispatcher, and the `helpText` constant; everything else moves out.
+- **22 new files**, one per top-level subcommand or related helper set: `cmd_adf.go`, `cmd_edit.go`, `cmd_page.go` (dispatcher + shared helpers), `cmd_page_get.go`, `cmd_page_upload.go`, `cmd_page_create.go`, `cmd_page_apply.go`, `cmd_page_move.go`, `cmd_page_reorder.go`, `cmd_page_delete.go`, `cmd_page_digest.go`, `cmd_page_rewrite.go`, `cmd_page_children.go`, `cmd_search.go`, `cmd_home.go`, `cmd_lint.go`, `cmd_extract.go`, `cmd_index.go`, `cmd_update.go`. Two cross-cutting helper files: `markdown_helpers.go` (ATX heading parsing + `mdSection` type + ADF heading-text extraction) and `io_helpers.go` (`readInput`, `readADFInput`, `writeJSON`).
+- All files stay in `package main` — no new sub-package, no export ceremony, no API breakage. The Go convention `cmd/` directory is reserved for multi-binary projects; for sub-commands of a single binary, flat-with-prefix is idiomatic.
+
+### `cli/README.md` rewritten — single install flow
+
+Previously the file maintained three audience-specific paths ("For Claude", "For humans", "For developers") that duplicated content with `reference/install-for-ai.md` and the root README. The new file (282 → 165 lines) leads with the install one-liner, then `confluence-docs setup` for credentials, then `update` for upgrades, followed by the command catalogue and the build-from-source instructions for contributors.
+
+### Test coverage — five command files lifted from zero
+
+Before this release the following files had no dedicated unit tests; only `main_test.go` exercised them indirectly:
+
+- `cmd_home.go` (Confluence Home cache: `home --refresh/--status/--show/--query/--digest`)
+- `cmd_index.go` (Page ID Index table manipulation: `index add/remove/sync`)
+- `cmd_page_reorder.go` (sibling reordering via v1 endpoint)
+- `cmd_page_rewrite.go` (markdown → multi-section diff against an existing page)
+- `markdown_helpers.go` (ATX heading parsing + ADF heading-text traversal)
+
+Five new test files now cover these, contributing **107 new `Test*` functions** and many more `t.Run` sub-cases. The IO-bound paths use the `http.DefaultTransport` RoundTripper mocking pattern shared with `cmd_space_test.go`; the pure-function paths use the table-driven pattern shared with `cmd_km_test.go`. Totals after this release:
+
+- **207** `Test*` functions
+- **461** `t.Run` sub-cases
+- **381** individual `PASS` lines under `go test -v`
+- `go build ./...`, `go test -count=1 ./...`: all green
+- `go vet ./...` reports one pre-existing warning (`cmd_space_test.go:298` self-assignment), not regressed
+
+### Skill repository — packaging cleanup
+
+- **`LICENSE` duplicated into the skill directory** (`confluence-docs/LICENSE`). When the install script or future plugin host copies the skill into a user's `~/.claude/skills/confluence-docs/`, the licence file follows. The repository root keeps its own `LICENSE`.
+- **`INSTALL_FOR_AI.md` moved** to `confluence-docs/reference/install-for-ai.md`. It's a runbook for AI agents performing the install — conceptually a reference doc. References in the root `README.md` updated.
+- **Empty `.gitkeep` files removed** (`bin/`, `cli/`, `reference/`). The install script creates these directories via `mkdir -p`, so the placeholders served no purpose.
+- **`version: 0.11.1`** added to the `SKILL.md` frontmatter (was absent before).
+
+### Findings parked for follow-up (no fix in this release)
+
+- **`page reorder --dry-run`** is documented in `--help` but not implemented — falls into the unknown-flag branch. A test now documents the current behaviour.
+- **`lint` silently ignores ADF nodes of unknown type.** The implementation only validates `heading`, `table`, `bulletList`, `orderedList`, `text`, and link marks. By design today; worth deciding whether to add a `default:` warning later.
+
+### Migration notes
+
+No action needed. The on-disk binary, CLI flags, credentials, home cache, frontmatter contract, and reference file paths are all unchanged. `confluence-docs update` downloads the v0.11.1 release archive and overwrites the binary atomically; existing credentials and home cache are preserved.
+
+---
+
 ## v0.11.0 (2026-05-13) — major skill refactor + CLI table-match by column
 
 A focused pass to align the skill with Anthropic's official skill-creator best practices and to remove two real-world friction points observed in long edit sessions: (1) `--match-cell` silently failing when the first column wasn't unique, and (2) the lack of guidance on child-page titles that duplicate parent context. Both surfaced during a multi-hour session refactoring an "ICPs + Validation Plan" page tree (~10 child pages, multiple tables to edit).
