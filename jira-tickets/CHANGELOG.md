@@ -1,5 +1,19 @@
 # Changelog — jira-tickets
 
+## v0.3.0 — project list/get/update
+
+Adds the `project` command group with three subcommands:
+
+- `jira-tickets project list [--limit N] [--start-at N] [--json]` — lists projects as TSV (`KEY\tNAME\tTYPE\tID`); paginates via `--start-at`; defaults to 50 results per page (max 100).
+- `jira-tickets project get KEY [--json]` — shows key, name, id, project type, lead, default assignee, simplified (yes/no), and avatar URL for a single project.
+- `jira-tickets project update KEY [--name X] [--key Y] [--description Z] [--dry-run]` — renames/edits a project. New key is validated against `^[A-Z][A-Z0-9_]{1,9}$`. `--dry-run` prints the intended PUT payload and skips credential resolution. The `--help` text includes a prominent warning that renaming the key changes all issue prefixes (e.g. `SCRUM-1 → NEWKEY-1`) and breaks external references hardcoded to the old key (Jira maintains an internal redirect, but external scripts fetching by hardcoded key still work after the change).
+
+### Implementation
+
+Three new client methods in `pkg/atlassian/jira/client.go`: `ListProjects`, `GetProject`, `UpdateProject`. Three new types in `types.go`: `ProjectFull`, `ProjectSearchResult`, `ProjectUpdate` (pointer fields on `ProjectUpdate` so only set fields are marshaled). Four new CLI files: `cmd_project.go` (dispatcher), `cmd_project_list.go`, `cmd_project_get.go`, `cmd_project_update.go`, each with a companion `_test.go`.
+
+---
+
 ## v0.2.0 (2026-05-14) — self-update
 
 Adds `jira-tickets update [--check]` — the self-update subcommand parked in v0.1.0.

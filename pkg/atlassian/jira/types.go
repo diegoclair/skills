@@ -159,6 +159,36 @@ type CreateIssueInput struct {
 	Custom map[string]any
 }
 
+// ProjectFull holds detailed information about a Jira project returned by
+// GET /rest/api/3/project/{key}.
+type ProjectFull struct {
+	ID               string
+	Key              string
+	Name             string
+	ProjectTypeKey   string
+	Simplified       bool
+	Lead             *User
+	DefaultAssignee  string
+	AvatarURL        string
+}
+
+// ProjectSearchResult holds one page of results from GET /rest/api/3/project/search.
+type ProjectSearchResult struct {
+	Projects   []ProjectFull
+	Total      int
+	StartAt    int
+	MaxResults int
+	IsLast     bool
+}
+
+// ProjectUpdate carries the fields to change on PUT /rest/api/3/project/{key}.
+// Only non-nil fields are included in the JSON body sent to the API.
+type ProjectUpdate struct {
+	Name        *string `json:"name,omitempty"`
+	Key         *string `json:"key,omitempty"`
+	Description *string `json:"description,omitempty"`
+}
+
 // ---------- internal wire types ----------
 
 // issueWire is the shape returned by GET /rest/api/3/issue/{key}.

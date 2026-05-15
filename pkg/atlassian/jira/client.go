@@ -586,6 +586,163 @@ func (c *Client) EditIssue(key string, fields map[string]any) error {
 	return nil
 }
 
+// ListProjects returns a page of projects from GET /rest/api/3/project/search.
+// limit caps the page size (1–100; default 50 when 0). startAt is the
+// zero-based offset for pagination.
+func (c *Client) ListProjects(limit, startAt int) (*ProjectSearchResult, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	path := fmt.Sprintf("/project/search?maxResults=%d&startAt=%d", limit, startAt)
+	data, err := c.get(path)
+	if err != nil {
+		return nil, fmt.Errorf("jira: listProjects: %w", err)
+	}
+
+	var wire struct {
+		Values []struct {
+			ID             string `json:"id"`
+			Key            string `json:"key"`
+			Name           string `json:"name"`
+			ProjectTypeKey string `json:"projectTypeKey"`
+			Simplified     bool   `json:"simplified"`
+			AvatarUrls     struct {
+				Large string `json:"48x48"`
+			} `json:"avatarUrls"`
+		} `json:"values"`
+		Total      int  `json:"total"`
+		StartAt    int  `json:"startAt"`
+		MaxResults int  `json:"maxResults"`
+		IsLast     bool `json:"isLast"`
+	}
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return nil, fmt.Errorf("jira: listProjects: parse response: %w", err)
+	}
+
+	out := &ProjectSearchResult{
+		Total:      wire.Total,
+		StartAt:    wire.StartAt,
+		MaxResults: wire.MaxResults,
+		IsLast:     wire.IsLast,
+		Projects:   make([]ProjectFull, 0, len(wire.Values)),
+	}
+	for _, v := range wire.Values {
+		out.Projects = append(out.Projects, ProjectFull{
+			ID:             v.ID,
+			Key:            v.Key,
+			Name:           v.Name,
+			ProjectTypeKey: v.ProjectTypeKey,
+			Simplified:     v.Simplified,
+			AvatarURL:      v.AvatarUrls.Large,
+		})
+	}
+	return out, nil
+}
+
+// GetProject fetches a single project by key or ID.
+// Uses GET /rest/api/3/project/{keyOrID}.
+// Returns *APIError with StatusCode 404 when the project does not exist.
+func (c *Client) GetProject(keyOrID string) (*ProjectFull, error) {
+	data, err := c.get("/project/" + url.PathEscape(keyOrID))
+	if err != nil {
+		return nil, fmt.Errorf("jira: getProject %s: %w", keyOrID, err)
+	}
+
+	var wire struct {
+		ID             string `json:"id"`
+		Key            string `json:"key"`
+		Name           string `json:"name"`
+		ProjectTypeKey string `json:"projectTypeKey"`
+		Simplified     bool   `json:"simplified"`
+		Lead           *struct {
+			AccountID    string `json:"accountId"`
+			DisplayName  string `json:"displayName"`
+			EmailAddress string `json:"emailAddress"`
+		} `json:"lead"`
+		AssigneeType string `json:"assigneeType"`
+		AvatarUrls   struct {
+			Large string `json:"48x48"`
+		} `json:"avatarUrls"`
+	}
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return nil, fmt.Errorf("jira: getProject %s: parse response: %w", keyOrID, err)
+	}
+
+	p := &ProjectFull{
+		ID:              wire.ID,
+		Key:             wire.Key,
+		Name:            wire.Name,
+		ProjectTypeKey:  wire.ProjectTypeKey,
+		Simplified:      wire.Simplified,
+		DefaultAssignee: wire.AssigneeType,
+		AvatarURL:       wire.AvatarUrls.Large,
+	}
+	if wire.Lead != nil {
+		p.Lead = &User{
+			AccountID:    wire.Lead.AccountID,
+			DisplayName:  wire.Lead.DisplayName,
+			EmailAddress: wire.Lead.EmailAddress,
+		}
+	}
+	return p, nil
+}
+
+// UpdateProject edits a project's metadata.
+// Uses PUT /rest/api/3/project/{keyOrID}. Only fields set (non-nil) in update
+// are sent to the API. Returns the updated project on success.
+// Returns *APIError with StatusCode 404 when the project does not exist.
+func (c *Client) UpdateProject(keyOrID string, update ProjectUpdate) (*ProjectFull, error) {
+	b, err := json.Marshal(update)
+	if err != nil {
+		return nil, fmt.Errorf("jira: updateProject: marshal payload: %w", err)
+	}
+	data, _, err := c.doRequest("PUT", c.BaseURL()+"/project/"+url.PathEscape(keyOrID), bytes.NewReader(b))
+	if err != nil {
+		return nil, fmt.Errorf("jira: updateProject %s: %w", keyOrID, err)
+	}
+
+	var wire struct {
+		ID             string `json:"id"`
+		Key            string `json:"key"`
+		Name           string `json:"name"`
+		ProjectTypeKey string `json:"projectTypeKey"`
+		Simplified     bool   `json:"simplified"`
+		Lead           *struct {
+			AccountID    string `json:"accountId"`
+			DisplayName  string `json:"displayName"`
+			EmailAddress string `json:"emailAddress"`
+		} `json:"lead"`
+		AssigneeType string `json:"assigneeType"`
+		AvatarUrls   struct {
+			Large string `json:"48x48"`
+		} `json:"avatarUrls"`
+	}
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return nil, fmt.Errorf("jira: updateProject %s: parse response: %w", keyOrID, err)
+	}
+
+	p := &ProjectFull{
+		ID:              wire.ID,
+		Key:             wire.Key,
+		Name:            wire.Name,
+		ProjectTypeKey:  wire.ProjectTypeKey,
+		Simplified:      wire.Simplified,
+		DefaultAssignee: wire.AssigneeType,
+		AvatarURL:       wire.AvatarUrls.Large,
+	}
+	if wire.Lead != nil {
+		p.Lead = &User{
+			AccountID:    wire.Lead.AccountID,
+			DisplayName:  wire.Lead.DisplayName,
+			EmailAddress: wire.Lead.EmailAddress,
+		}
+	}
+	return p, nil
+}
+
 // AddComment posts a new comment on the given issue.
 // Uses POST /rest/api/3/issue/{key}/comment.
 // adfBody must be valid ADF JSON (the caller is responsible for conversion

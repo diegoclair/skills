@@ -16,13 +16,13 @@ allowed-tools: |
 
 # jira-tickets — Jira Cloud assistant
 
-> **v0.2.0 adds self-update.** Sprint and epic-linking remain MCP-fallback for now (see status table below).
+> **v0.3.0 adds `project list/get/update`.** Sprint and epic-linking remain MCP-fallback for now (see status table below).
 
 ## Overview
 
 Drives Claude against Jira Cloud through a local Go binary that returns **digests, JQL TSV slices, and surgical updates** instead of full ADF round-trips. The same Atlassian token used by the `confluence-docs` skill works here — both read credentials from `~/.config/atlassian/credentials` (with fallback to the per-skill files for back-compat).
 
-## Status (v0.2.0)
+## Status (v0.3.0)
 
 | Operation | Where today |
 |---|---|
@@ -37,10 +37,12 @@ Drives Claude against Jira Cloud through a local Go binary that returns **digest
 | Apply transition | ✅ `jira-tickets issue transition --key K --to "In Progress"` |
 | Add comment | ✅ `jira-tickets issue comment --key K --body "..."` (markdown → ADF) |
 | Self-update | ✅ `jira-tickets update` |
-| Epic add/remove child | ⏳ v0.2.0 (MCP fallback) |
-| Sprint move | ⏳ v0.3.0 (MCP fallback) |
-| Project list | ⏳ v0.2.0 (MCP fallback) |
-| Custom-field shapes | ⏳ v0.2.0 (only flat scalars in v0.1.0) |
+| Project list | ✅ `jira-tickets project list [--limit N] [--start-at N] [--json]` |
+| Project get | ✅ `jira-tickets project get KEY [--json]` |
+| Project update | ✅ `jira-tickets project update KEY [--name X] [--key Y] [--description Z] [--dry-run]` |
+| Epic add/remove child | ⏳ v0.4.0+ (MCP fallback) |
+| Sprint move | ⏳ v0.4.0+ (MCP fallback) |
+| Custom-field shapes | ⏳ v0.4.0+ (only flat scalars in v0.1.0) |
 
 ## Why this skill (vs MCP alone)
 
@@ -51,7 +53,7 @@ Drives Claude against Jira Cloud through a local Go binary that returns **digest
 ## Tool priority
 
 1. `jira-tickets` if the binary is on PATH (verify with `jira-tickets --version`) **and** the operation is in the supported list above.
-2. Atlassian MCP for: project listing, epic linking, sprint membership, complex custom-field shapes.
+2. Atlassian MCP for: epic linking, sprint membership, complex custom-field shapes.
 3. Manual UI for: anything destructive (delete issue, force-transition across screens), or screen-protected transitions that require fill-in fields.
 
 ## Common workflows

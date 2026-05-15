@@ -40,6 +40,7 @@ USAGE:
   jira-tickets myself       [--json]
   jira-tickets search       "JQL" [--limit N] [--fields a,b] [--next-page-token T] [--json]
   jira-tickets issue        VERB [flags]
+  jira-tickets project      VERB [flags]
   jira-tickets --version
   jira-tickets --help
 
@@ -64,6 +65,17 @@ ISSUE VERBS:
   issue comment     --key K (--body "..." | --body-file PATH | --body-stdin)
                     [--dry-run] [--json]
                     Markdown body converted to ADF on the way to the API.
+
+PROJECT VERBS:
+  project list      [--limit N] [--start-at N] [--json]
+                    TSV output: KEY\tNAME\tTYPE\tID. Paginate with --start-at.
+  project get       KEY [--json]
+                    Details for one project: key, name, id, type, lead,
+                    default assignee, simplified, avatar URL.
+  project update    KEY --name "..." | --key NEW_KEY | --description "..."
+                    [--dry-run]
+                    Rename/edit project. New key must match ^[A-Z][A-Z0-9_]{1,9}$.
+                    WARNING: renaming the key changes all issue prefixes.
 
 COMMON FLAGS (any subcommand):
   --cloud X         Override the configured Atlassian cloud subdomain.
@@ -112,6 +124,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) (int, error) 
 		return runSearch(args[1:], stdout, stderr)
 	case "issue":
 		return runIssue(args[1:], stdin, stdout, stderr)
+	case "project":
+		return runProject(args[1:], stdout, stderr)
 	}
 	fmt.Fprintln(stderr, "unknown command:", args[0])
 	fmt.Fprint(stderr, helpText)

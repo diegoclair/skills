@@ -1241,6 +1241,290 @@ func TestSearchJQL_EmptyResult(t *testing.T) {
 	}
 }
 
+// ---------- TestListProjects ----------
+
+func TestListProjects_HappyPath(t *testing.T) {
+	c := newTestClient(t, func(r *http.Request) (*http.Response, error) {
+		if r.Method != http.MethodGet {
+			t.Errorf("method: want GET, got %s", r.Method)
+		}
+		if !strings.Contains(r.URL.Path, "/rest/api/3/project/search") {
+			t.Errorf("path: want /rest/api/3/project/search, got %s", r.URL.Path)
+		}
+		q := r.URL.Query()
+		if q.Get("maxResults") != "10" {
+			t.Errorf("maxResults: want 10, got %q", q.Get("maxResults"))
+		}
+		if q.Get("startAt") != "0" {
+			t.Errorf("startAt: want 0, got %q", q.Get("startAt"))
+		}
+		return jsonResp(200, `{
+			"values": [
+				{
+					"id": "10000",
+					"key": "LYBEL",
+					"name": "Lybel",
+					"projectTypeKey": "software",
+					"simplified": true,
+					"avatarUrls": {"48x48": "https://example.atlassian.net/avatar.png"}
+				},
+				{
+					"id": "10001",
+					"key": "OPS",
+					"name": "Operations",
+					"projectTypeKey": "business",
+					"simplified": false,
+					"avatarUrls": {"48x48": ""}
+				}
+			],
+			"total": 2,
+			"startAt": 0,
+			"maxResults": 10,
+			"isLast": true
+		}`), nil
+	})
+
+	result, err := c.ListProjects(10, 0)
+	if err != nil {
+		t.Fatalf("ListProjects: %v", err)
+	}
+	if len(result.Projects) != 2 {
+		t.Fatalf("Projects: want 2, got %d", len(result.Projects))
+	}
+	if result.Projects[0].Key != "LYBEL" {
+		t.Errorf("Projects[0].Key: want LYBEL, got %q", result.Projects[0].Key)
+	}
+	if result.Projects[0].Name != "Lybel" {
+		t.Errorf("Projects[0].Name: want Lybel, got %q", result.Projects[0].Name)
+	}
+	if result.Projects[0].ProjectTypeKey != "software" {
+		t.Errorf("Projects[0].ProjectTypeKey: want software, got %q", result.Projects[0].ProjectTypeKey)
+	}
+	if !result.Projects[0].Simplified {
+		t.Error("Projects[0].Simplified: want true")
+	}
+	if result.Projects[0].AvatarURL != "https://example.atlassian.net/avatar.png" {
+		t.Errorf("Projects[0].AvatarURL: want URL, got %q", result.Projects[0].AvatarURL)
+	}
+	if result.Projects[1].Key != "OPS" {
+		t.Errorf("Projects[1].Key: want OPS, got %q", result.Projects[1].Key)
+	}
+	if result.Total != 2 {
+		t.Errorf("Total: want 2, got %d", result.Total)
+	}
+	if !result.IsLast {
+		t.Error("IsLast: want true")
+	}
+}
+
+func TestListProjects_DefaultLimit(t *testing.T) {
+	c := newTestClient(t, func(r *http.Request) (*http.Response, error) {
+		q := r.URL.Query()
+		if q.Get("maxResults") != "50" {
+			t.Errorf("maxResults: want 50 (default), got %q", q.Get("maxResults"))
+		}
+		return jsonResp(200, `{"values":[],"total":0,"startAt":0,"maxResults":50,"isLast":true}`), nil
+	})
+
+	_, err := c.ListProjects(0, 0)
+	if err != nil {
+		t.Fatalf("ListProjects: %v", err)
+	}
+}
+
+func TestListProjects_MaxResultsCapped(t *testing.T) {
+	c := newTestClient(t, func(r *http.Request) (*http.Response, error) {
+		q := r.URL.Query()
+		if q.Get("maxResults") != "100" {
+			t.Errorf("maxResults: want 100 (capped), got %q", q.Get("maxResults"))
+		}
+		return jsonResp(200, `{"values":[],"total":0,"startAt":0,"maxResults":100,"isLast":true}`), nil
+	})
+
+	_, err := c.ListProjects(200, 0)
+	if err != nil {
+		t.Fatalf("ListProjects: %v", err)
+	}
+}
+
+// ---------- TestGetProject ----------
+
+func TestGetProject_HappyPath(t *testing.T) {
+	c := newTestClient(t, func(r *http.Request) (*http.Response, error) {
+		if r.Method != http.MethodGet {
+			t.Errorf("method: want GET, got %s", r.Method)
+		}
+		if !strings.Contains(r.URL.Path, "/rest/api/3/project/LYBEL") {
+			t.Errorf("path: want /rest/api/3/project/LYBEL, got %s", r.URL.Path)
+		}
+		return jsonResp(200, `{
+			"id": "10000",
+			"key": "LYBEL",
+			"name": "Lybel",
+			"projectTypeKey": "software",
+			"simplified": true,
+			"lead": {
+				"accountId": "lead001",
+				"displayName": "Diego Clair",
+				"emailAddress": "diego@lybel.com.br"
+			},
+			"assigneeType": "UNASSIGNED",
+			"avatarUrls": {"48x48": "https://example.atlassian.net/avatar.png"}
+		}`), nil
+	})
+
+	p, err := c.GetProject("LYBEL")
+	if err != nil {
+		t.Fatalf("GetProject: %v", err)
+	}
+	if p.Key != "LYBEL" {
+		t.Errorf("Key: want LYBEL, got %q", p.Key)
+	}
+	if p.Name != "Lybel" {
+		t.Errorf("Name: want Lybel, got %q", p.Name)
+	}
+	if p.ID != "10000" {
+		t.Errorf("ID: want 10000, got %q", p.ID)
+	}
+	if p.ProjectTypeKey != "software" {
+		t.Errorf("ProjectTypeKey: want software, got %q", p.ProjectTypeKey)
+	}
+	if !p.Simplified {
+		t.Error("Simplified: want true")
+	}
+	if p.Lead == nil {
+		t.Fatal("Lead should not be nil")
+	}
+	if p.Lead.DisplayName != "Diego Clair" {
+		t.Errorf("Lead.DisplayName: want Diego Clair, got %q", p.Lead.DisplayName)
+	}
+	if p.DefaultAssignee != "UNASSIGNED" {
+		t.Errorf("DefaultAssignee: want UNASSIGNED, got %q", p.DefaultAssignee)
+	}
+}
+
+func TestGetProject_NoLead(t *testing.T) {
+	c := newTestClient(t, func(r *http.Request) (*http.Response, error) {
+		return jsonResp(200, `{
+			"id": "10001",
+			"key": "OPS",
+			"name": "Operations",
+			"projectTypeKey": "business",
+			"simplified": false,
+			"assigneeType": "PROJECT_LEAD",
+			"avatarUrls": {"48x48": ""}
+		}`), nil
+	})
+
+	p, err := c.GetProject("OPS")
+	if err != nil {
+		t.Fatalf("GetProject: %v", err)
+	}
+	if p.Lead != nil {
+		t.Errorf("Lead: want nil (no lead), got %+v", p.Lead)
+	}
+}
+
+func TestGetProject_404NotFound(t *testing.T) {
+	c := newTestClient(t, func(r *http.Request) (*http.Response, error) {
+		return jsonResp(404, `{"errorMessages":["No project could be found with key 'NOEXIST'."],"errors":{}}`), nil
+	})
+
+	_, err := c.GetProject("NOEXIST")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !IsNotFound(err) {
+		t.Errorf("expected IsNotFound, got %v", err)
+	}
+}
+
+// ---------- TestUpdateProject ----------
+
+func TestUpdateProject_HappyPath(t *testing.T) {
+	newName := "Lybel Platform"
+	c := newTestClient(t, func(r *http.Request) (*http.Response, error) {
+		if r.Method != http.MethodPut {
+			t.Errorf("method: want PUT, got %s", r.Method)
+		}
+		if !strings.Contains(r.URL.Path, "/rest/api/3/project/LYBEL") {
+			t.Errorf("path: want /rest/api/3/project/LYBEL, got %s", r.URL.Path)
+		}
+		assertHeader(t, r, "Content-Type", "application/json")
+
+		var payload ProjectUpdate
+		decodeBody(t, r, &payload)
+		if payload.Name == nil || *payload.Name != "Lybel Platform" {
+			t.Errorf("name: want 'Lybel Platform', got %v", payload.Name)
+		}
+		if payload.Key != nil {
+			t.Errorf("key: want nil (not set), got %v", payload.Key)
+		}
+
+		return jsonResp(200, `{
+			"id": "10000",
+			"key": "LYBEL",
+			"name": "Lybel Platform",
+			"projectTypeKey": "software",
+			"simplified": true,
+			"assigneeType": "UNASSIGNED",
+			"avatarUrls": {"48x48": ""}
+		}`), nil
+	})
+
+	p, err := c.UpdateProject("LYBEL", ProjectUpdate{Name: &newName})
+	if err != nil {
+		t.Fatalf("UpdateProject: %v", err)
+	}
+	if p.Name != "Lybel Platform" {
+		t.Errorf("Name: want 'Lybel Platform', got %q", p.Name)
+	}
+}
+
+func TestUpdateProject_AllFields(t *testing.T) {
+	newName := "New Name"
+	newKey := "NEWKEY"
+	newDesc := "New description"
+	c := newTestClient(t, func(r *http.Request) (*http.Response, error) {
+		var payload ProjectUpdate
+		decodeBody(t, r, &payload)
+		if payload.Name == nil || *payload.Name != "New Name" {
+			t.Errorf("name: want 'New Name', got %v", payload.Name)
+		}
+		if payload.Key == nil || *payload.Key != "NEWKEY" {
+			t.Errorf("key: want 'NEWKEY', got %v", payload.Key)
+		}
+		if payload.Description == nil || *payload.Description != "New description" {
+			t.Errorf("description: want 'New description', got %v", payload.Description)
+		}
+		return jsonResp(200, `{"id":"10000","key":"NEWKEY","name":"New Name","projectTypeKey":"software","simplified":true,"assigneeType":"UNASSIGNED","avatarUrls":{"48x48":""}}`), nil
+	})
+
+	_, err := c.UpdateProject("LYBEL", ProjectUpdate{
+		Name:        &newName,
+		Key:         &newKey,
+		Description: &newDesc,
+	})
+	if err != nil {
+		t.Fatalf("UpdateProject: %v", err)
+	}
+}
+
+func TestUpdateProject_404NotFound(t *testing.T) {
+	newName := "x"
+	c := newTestClient(t, func(r *http.Request) (*http.Response, error) {
+		return jsonResp(404, `{"errorMessages":["No project could be found with key 'GHOST'."],"errors":{}}`), nil
+	})
+
+	_, err := c.UpdateProject("GHOST", ProjectUpdate{Name: &newName})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !IsNotFound(err) {
+		t.Errorf("expected IsNotFound, got %v", err)
+	}
+}
+
 // ---------- TestEditIssue_AssigneeShape ----------
 
 func TestEditIssue_AssigneeShape(t *testing.T) {
