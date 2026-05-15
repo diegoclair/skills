@@ -12,7 +12,7 @@
 | Skill | Summary | Docs |
 |---|---|---|
 | **`confluence-docs`** | Search, create, classify and update Confluence Cloud pages in natural language. Ships a local Go CLI that returns page digests / single sections instead of full ADF bodies — 10–50× cheaper in tokens than the raw MCP path (which remains as fallback). Includes a `km` subcommand that consolidates a whole space into a typed Knowledge Map, owner `@mention` resolution, real Confluence labels from `:::properties` tags, smart links, and a canonical 5-doc-types spec (`reference/doc-types.md`). | [SKILL.md](./confluence-docs/SKILL.md) |
-| **`jira-tickets`** | Token-efficient Jira Cloud assistant. Shares `pkg/atlassian` with `confluence-docs` (same Atlassian API token via `~/.config/atlassian/credentials`, same ADF format). Commands: `myself`, `search "JQL"`, `issue digest` (~500 B summary), `issue get`, `issue create/update/transition/comment`, `issue transitions` list, `update` (self-update). Sprint move, epic add-child parked for later. | [SKILL.md](./jira-tickets/SKILL.md) |
+| **`jira-tickets`** | Token-efficient Jira Cloud assistant. Shares `pkg/atlassian` with `confluence-docs` (same Atlassian API token via `~/.config/atlassian/credentials`, same ADF format). Commands: `myself`, `search "JQL"`, `issue digest` (~500 B summary), `issue get`, `issue create/update/transition/comment`, `issue transitions` list, `project list/get/update`, `update` (self-update). Epic linking, sprints, boards, attachments, worklogs parked — see [ROADMAP.md](./jira-tickets/ROADMAP.md). | [SKILL.md](./jira-tickets/SKILL.md) |
 
 Next candidates: `figma-files`, `analytics`.
 
