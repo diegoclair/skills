@@ -132,16 +132,34 @@ func TestFindLatestByPrefix_EmptyResponse(t *testing.T) {
 	}
 }
 
-func TestFindLatestByPrefix_HTTPError(t *testing.T) {
+func TestFindLatestByPrefix_RateLimit(t *testing.T) {
+	// 403 + "rate limit" in body gets a dedicated, friendlier error
+	// message pointing at the manual-pin escape hatch.
 	client := mockClient(http.StatusForbidden, `{"message":"API rate limit exceeded"}`)
 	_, err := FindLatestByPrefix("diegoclair/skills", "jira-v", client)
 	if err == nil {
-		t.Fatal("expected an error for non-2xx")
-	}
-	if !strings.Contains(err.Error(), "403") {
-		t.Errorf("expected status code in error, got: %v", err)
+		t.Fatal("expected an error for 403 rate-limit")
 	}
 	if !strings.Contains(err.Error(), "rate limit") {
+		t.Errorf("expected 'rate limit' phrasing, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "pin the version") {
+		t.Errorf("expected escape-hatch hint in error, got: %v", err)
+	}
+}
+
+func TestFindLatestByPrefix_OtherHTTPError(t *testing.T) {
+	// Non-rate-limit 4xx/5xx falls through to the generic "status + body
+	// snippet" error so the caller still gets enough to debug.
+	client := mockClient(http.StatusInternalServerError, `{"message":"upstream blew up"}`)
+	_, err := FindLatestByPrefix("diegoclair/skills", "jira-v", client)
+	if err == nil {
+		t.Fatal("expected an error for 5xx")
+	}
+	if !strings.Contains(err.Error(), "500") {
+		t.Errorf("expected status code in error, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "upstream blew up") {
 		t.Errorf("expected body snippet in error, got: %v", err)
 	}
 }
