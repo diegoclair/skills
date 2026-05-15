@@ -79,6 +79,9 @@ func FindLatestByPrefix(repoOwnerRepo, prefix string, httpClient *http.Client) (
 	// stable even if GitHub flips defaults in the future.
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	// GitHub asks every script/CLI hitting the API to identify itself.
+	// Skipping this gives 403 in some edge cases; setting it is free.
+	req.Header.Set("User-Agent", "diegoclair-skills-release-resolver")
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
@@ -95,6 +98,12 @@ func FindLatestByPrefix(repoOwnerRepo, prefix string, httpClient *http.Client) (
 		snippet := string(body)
 		if len(snippet) > 200 {
 			snippet = snippet[:200] + "..."
+		}
+		// Special-case the most common 403: API rate limit. The body usually
+		// contains the literal "API rate limit exceeded" — surface a
+		// friendlier hint pointing at the env-var escape hatch.
+		if resp.StatusCode == 403 && strings.Contains(string(body), "rate limit") {
+			return "", fmt.Errorf("release: GitHub API rate limit hit (60 req/hour unauthenticated). Wait an hour or pin the version explicitly")
 		}
 		return "", fmt.Errorf("release: GitHub API %d for %s: %s", resp.StatusCode, repoOwnerRepo, snippet)
 	}

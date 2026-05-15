@@ -57,18 +57,28 @@ if ($env:SKILL_VERSION) {
     $Version = $env:SKILL_VERSION
 } else {
     $ReleasesApi = "https://api.github.com/repos/$Repo/releases?per_page=30"
+    $UA = "$SkillName-installer (https://github.com/$Repo)"
     try {
-        $Releases = Invoke-RestMethod -Uri $ReleasesApi -UseBasicParsing
+        $Releases = Invoke-RestMethod -Uri $ReleasesApi -UseBasicParsing -UserAgent $UA
         $Match = $Releases | Where-Object { $_.tag_name -like "$TagPrefix*" } | Select-Object -First 1
         if ($Match) {
             $Version = $Match.tag_name
+        } elseif ($Releases) {
+            Write-Error "No $TagPrefix* release found on $Repo. The repo has releases under other prefixes only. Set `$env:SKILL_VERSION explicitly if you know the tag."
+            exit 1
         }
     } catch {
-        Write-Error "Could not query GitHub API: $($_.Exception.Message)"
+        # Distinguish rate-limit from a generic failure.
+        $msg = $_.Exception.Message
+        if ($msg -match 'rate limit' -or $msg -match '403') {
+            Write-Error "GitHub API rate limit hit (60 req/hour unauthenticated). Wait, or set `$env:SKILL_VERSION=$TagPrefix<X.Y.Z> explicitly."
+        } else {
+            Write-Error "GitHub API call failed: $msg"
+        }
         exit 1
     }
     if (-not $Version) {
-        Write-Error "Could not find any $TagPrefix* release on $Repo. Set `$env:SKILL_VERSION explicitly."
+        Write-Error "Could not determine latest $TagPrefix* release on $Repo. Set `$env:SKILL_VERSION explicitly."
         exit 1
     }
 }

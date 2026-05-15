@@ -89,14 +89,36 @@ if [ -n "$SKILL_VERSION" ]; then
   VERSION="$SKILL_VERSION"
 else
   RELEASES_API="https://api.github.com/repos/$SKILL_REPO/releases?per_page=30"
-  if command -v curl >/dev/null 2>&1; then
-    VERSION="$(curl -fsSL "$RELEASES_API" 2>/dev/null \
-      | grep -oE "\"tag_name\":[[:space:]]*\"${SKILL_TAG_PREFIX}[^\"]+\"" \
-      | head -1 \
-      | sed "s/.*\"\(${SKILL_TAG_PREFIX}[^\"]*\)\"/\1/")"
+  UA="$SKILL_NAME-installer (https://github.com/$SKILL_REPO)"
+  # Two-step so we can diagnose curl failures vs grep-no-match vs rate-limit:
+  #   1. fetch into a variable, keeping stderr (don't silence with 2>/dev/null)
+  #   2. parse only if the fetch succeeded
+  if ! command -v curl >/dev/null 2>&1; then
+    die "curl not found; install curl or set SKILL_VERSION explicitly"
   fi
+  if ! API_RESP="$(curl -fsSL --retry 2 --retry-delay 1 -A "$UA" "$RELEASES_API")"; then
+    die "GitHub API call failed ($RELEASES_API). Network issue, or set SKILL_VERSION explicitly."
+  fi
+  VERSION="$(printf '%s\n' "$API_RESP" \
+    | grep -oE "\"tag_name\":[[:space:]]*\"${SKILL_TAG_PREFIX}[^\"]+\"" \
+    | head -1 \
+    | sed "s/.*\"\(${SKILL_TAG_PREFIX}[^\"]*\)\"/\1/")"
   if [ -z "$VERSION" ]; then
-    die "could not find any ${SKILL_TAG_PREFIX}* release on $SKILL_REPO; set SKILL_VERSION explicitly"
+    # Distinguish rate-limit from "really no release with this prefix".
+    case "$API_RESP" in
+      *"rate limit"*|*"API rate limit exceeded"*)
+        die "GitHub API rate limit hit (60 req/hour unauthenticated). Wait, or set SKILL_VERSION=$SKILL_TAG_PREFIX<X.Y.Z> explicitly."
+        ;;
+      *"\"tag_name\""*)
+        # The response had releases, just none matching our prefix.
+        die "no ${SKILL_TAG_PREFIX}* release found on $SKILL_REPO. The repo has releases under other prefixes only. Set SKILL_VERSION explicitly if you know the tag."
+        ;;
+      *)
+        # First 200 chars of whatever came back, for forensics.
+        snippet="$(printf '%s' "$API_RESP" | head -c 200)"
+        die "could not find any ${SKILL_TAG_PREFIX}* release on $SKILL_REPO. API response (first 200 chars): $snippet"
+        ;;
+    esac
   fi
 fi
 
