@@ -8,6 +8,7 @@ import "encoding/json"
 // compact and matches what Confluence's REST API expects.
 type Node struct {
 	Type    string         `json:"type"`
+	Version int            `json:"version,omitempty"`
 	Attrs   map[string]any `json:"attrs,omitempty"`
 	Marks   []Mark         `json:"marks,omitempty"`
 	Content []Node         `json:"content,omitempty"`
@@ -35,7 +36,7 @@ func Marshal(n Node, pretty bool) ([]byte, error) {
 func Doc(content ...Node) Node {
 	return Node{
 		Type:    "doc",
-		Attrs:   map[string]any{"version": 1},
+		Version: 1,
 		Content: dropEmpty(content),
 	}
 }

@@ -278,3 +278,31 @@ func mustJSON(n Node) string {
 	b, _ := json.MarshalIndent(n, "", "  ")
 	return string(b)
 }
+
+// TestDocVersionTopLevel is a regression test for the Jira v3 ADF wire format.
+// Jira Cloud REST v3 requires "version":1 at the top level of the doc node,
+// NOT nested inside "attrs". Before the fix, Doc() put version in attrs, causing
+// HTTP 400 INVALID_INPUT on issue create and issue comment.
+func TestDocVersionTopLevel(t *testing.T) {
+	doc, err := Convert([]byte("ola"))
+	if err != nil {
+		t.Fatalf("Convert error: %v", err)
+	}
+
+	b, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatalf("Marshal error: %v", err)
+	}
+	wire := string(b)
+
+	// version must appear at top level
+	want := `{"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"text","text":"ola"}]}]}`
+	if wire != want {
+		t.Fatalf("wire JSON mismatch:\n got: %s\nwant: %s", wire, want)
+	}
+
+	// version must NOT be inside attrs
+	if strings.Contains(wire, `"attrs"`) {
+		t.Fatalf("doc node must not have attrs, got: %s", wire)
+	}
+}
