@@ -1,8 +1,14 @@
 # Changelog — jira-tickets
 
-## v0.3.0 — project list/get/update
+## v0.3.0 (2026-05-15) — project commands + ADF fix for write paths
 
-Adds the `project` command group with three subcommands:
+### Bug fix: `issue create --description` and `issue comment --body`
+
+Both were returning HTTP 400 `INVALID_INPUT` against v0.2.0. Root cause was in the shared `pkg/atlassian/adf` package: the `doc` node emitted `version: 1` under `attrs` instead of at the top level. Confluence's REST API was tolerant of the wrong shape; Jira Cloud v3 validates strictly. The fix moves `version` to where the ADF spec puts it. Both write paths are now end-to-end validated against real Jira (`issue create`, `issue comment`).
+
+### New: `project` command group
+
+Adds three subcommands:
 
 - `jira-tickets project list [--limit N] [--start-at N] [--json]` — lists projects as TSV (`KEY\tNAME\tTYPE\tID`); paginates via `--start-at`; defaults to 50 results per page (max 100).
 - `jira-tickets project get KEY [--json]` — shows key, name, id, project type, lead, default assignee, simplified (yes/no), and avatar URL for a single project.

@@ -1,5 +1,11 @@
 # Changelog — confluence-docs
 
+## v0.14.1 (2026-05-15) — ADF spec compliance (shared with jira-tickets)
+
+Patch release. Shared `pkg/atlassian/adf` was emitting the `doc` node with `version: 1` nested under `attrs`; the spec puts it at the top level of the doc object. Confluence's REST API was tolerant of the old shape, so no `confluence-docs` user ever hit an error from it. The fix landed because Jira Cloud v3 rejects the non-spec form — without this commit, `jira-tickets issue create --description` and `issue comment --body` fail with HTTP 400.
+
+Net effect for confluence-docs users: wire bytes for newly created/edited pages are now spec-compliant. Behaviorally identical — all existing flows continue to work.
+
 ## v0.14.0 (2026-05-14) — update uses prefix-filter API (future-proof)
 
 Minor bump — no end-user CLI flag changes. `confluence-docs update` and `update --check` now resolve the latest release via the GitHub Releases API filtered by tag prefix, replacing the previous redirect-follow approach.
