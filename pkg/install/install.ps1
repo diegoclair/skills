@@ -59,7 +59,11 @@ if ($env:SKILL_VERSION) {
     $ReleasesApi = "https://api.github.com/repos/$Repo/releases?per_page=30"
     $UA = "$SkillName-installer (https://github.com/$Repo)"
     try {
-        $Releases = Invoke-RestMethod -Uri $ReleasesApi -UseBasicParsing -UserAgent $UA
+        # Invoke-WebRequest (not -RestMethod) so we can inspect response
+        # headers — x-ratelimit-reset lets us tell the user *when* the
+        # limit resets instead of a vague "wait an hour".
+        $Resp = Invoke-WebRequest -Uri $ReleasesApi -UseBasicParsing -UserAgent $UA
+        $Releases = $Resp.Content | ConvertFrom-Json
         $Match = $Releases | Where-Object { $_.tag_name -like "$TagPrefix*" } | Select-Object -First 1
         if ($Match) {
             $Version = $Match.tag_name
@@ -68,10 +72,34 @@ if ($env:SKILL_VERSION) {
             exit 1
         }
     } catch {
-        # Distinguish rate-limit from a generic failure.
         $msg = $_.Exception.Message
-        if ($msg -match 'rate limit' -or $msg -match '403') {
-            Write-Error "GitHub API rate limit hit (60 req/hour unauthenticated). Wait, or set `$env:SKILL_VERSION=$TagPrefix<X.Y.Z> explicitly."
+        $resp = $_.Exception.Response
+        $isRateLimit = $false
+        $resetMins = $null
+        if ($resp) {
+            $body = ''
+            try {
+                $stream = $resp.GetResponseStream()
+                $reader = New-Object System.IO.StreamReader($stream)
+                $body = $reader.ReadToEnd()
+                $reader.Close()
+            } catch {}
+            if ($body -match 'rate limit' -or $msg -match 'rate limit') {
+                $isRateLimit = $true
+                $resetHeader = $resp.Headers['X-RateLimit-Reset']
+                if ($resetHeader) {
+                    $resetSec = [int64]$resetHeader
+                    $nowSec = [int64](Get-Date -UFormat %s)
+                    $resetMins = [math]::Max(1, [math]::Floor(($resetSec - $nowSec) / 60) + 1)
+                }
+            }
+        }
+        if ($isRateLimit) {
+            if ($resetMins) {
+                Write-Error "GitHub API rate limit hit (60 req/hour unauthenticated). Resets in ~$resetMins min. Override: `$env:SKILL_VERSION=$TagPrefix<X.Y.Z>"
+            } else {
+                Write-Error "GitHub API rate limit hit (60 req/hour unauthenticated). Override: `$env:SKILL_VERSION=$TagPrefix<X.Y.Z>"
+            }
         } else {
             Write-Error "GitHub API call failed: $msg"
         }
