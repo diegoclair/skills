@@ -302,6 +302,31 @@ if ! "$BIN_DIR/$BIN_NAME" --version; then
   die "binary verification failed; binary at $BIN_DIR/$BIN_NAME may be corrupted"
 fi
 
+# ── post-install hook (optional, per-skill) ───────────────────────────────────
+#
+# A skill that needs extra runtime checks (e.g. headless Chrome for
+# social-carousel) implements a `postinstall` subcommand:
+#   <skill> postinstall --check   exit 0 = implemented, non-zero = skip
+#   <skill> postinstall           run the checks, print hints
+#
+# Skills that don't implement it (confluence-docs, jira-tickets, …) hit the
+# generic "unknown command" path and return exitInputErr=2 — we silently
+# skip. Output of the actual postinstall run is shown to the user; non-zero
+# exit is non-fatal (binary is already installed).
+if "$BIN_DIR/$BIN_NAME" postinstall --check >/dev/null 2>&1; then
+  echo ""
+  echo "Running post-install checks..."
+  set +e
+  "$BIN_DIR/$BIN_NAME" postinstall
+  POSTINSTALL_CODE=$?
+  set -e
+  if [ "$POSTINSTALL_CODE" -ne 0 ]; then
+    echo ""
+    echo "  (Post-install reported issues — see hints above. The binary itself"
+    echo "   is installed; you can address the hints and re-run later.)"
+  fi
+fi
+
 # ── check credentials (best-effort; skill may not expose `setup --check`) ─────
 
 echo ""

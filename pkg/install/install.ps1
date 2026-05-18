@@ -209,6 +209,22 @@ try {
     exit 1
 }
 
+# ── post-install hook (optional, per-skill) ───────────────────────────────────
+#
+# Mirror of the sh installer. Skill exposes `postinstall --check` to opt in;
+# skills without it return non-zero (unknown command) and we silently skip.
+$null = & $Destination postinstall --check 2>&1
+if ($LASTEXITCODE -eq 0) {
+    Write-Host ""
+    Write-Host "Running post-install checks..."
+    & $Destination postinstall
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host ""
+        Write-Host "  (Post-install reported issues — see hints above. The binary"
+        Write-Host "   itself is installed; re-run after addressing them.)"
+    }
+}
+
 # ── check credentials (best-effort) ────────────────────────────────────────────
 
 Write-Host ""

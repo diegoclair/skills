@@ -7,7 +7,7 @@ import (
 	"os/exec"
 	"runtime"
 
-	"github.com/diegoclair/skills/pkg/atlassian/release"
+	"github.com/diegoclair/skills/pkg/release"
 )
 
 func runUpdate(args []string, stdout, stderr io.Writer) (int, error) {
