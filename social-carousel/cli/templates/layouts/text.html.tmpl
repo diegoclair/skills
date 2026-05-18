@@ -1,0 +1,54 @@
+{{- /*
+  text.html.tmpl — Slide layout: FREE-FORM TEXT (fallback)
+  ---------------------------------------------------------
+  Field used:
+    .Slide.Body string — body text, ≤30 words (U9)
+
+  Use sparingly. Best for transition/interstitial slides where no other
+  layout fits.
+
+  Font-size scales with content length so a 4-word bridge reads as a
+  typographic poster and a 25-word narrative still fits without spilling:
+    ≤8 words   → 144px (poster)
+    9–16 words → 96px  (medium)
+    17–30 words→ 68px  (long)
+
+  Markdown-style **emphasis** in body renders in the accent color.
+*/ -}}
+{{define "layout-text"}}
+{{- $wc := wordCount .Slide.Body -}}
+{{- $size := "long" -}}
+{{- if le $wc 8 -}}{{- $size = "poster" -}}
+{{- else if le $wc 16 -}}{{- $size = "medium" -}}
+{{- end -}}
+<style>
+  .text-wrapper {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    padding-bottom: 96px;
+  }
+
+  .text-body {
+    font-family: var(--font-heading);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--fg-primary);
+    max-width: 900px;
+    text-wrap: balance;
+  }
+
+  .text-body--poster { font-size: 144px; line-height: 1.0; }
+  .text-body--medium { font-size: 96px;  line-height: 1.1; }
+  .text-body--long   { font-size: 68px;  line-height: 1.25; max-width: 880px; }
+</style>
+
+<div class="text-wrapper">
+  <p class="text-body text-body--{{ $size }}">{{ highlight .Slide.Body }}</p>
+</div>
+
+{{template "footer" .}}
+{{end}}

@@ -1,0 +1,78 @@
+{{- /*
+  carousel.html.tmpl — Top-level Go html/template
+  ------------------------------------------------
+  RenderData struct (passed by the renderer):
+    .Carousel   *Carousel        — full carousel config (Handle, Logo, ShowSlideNumber, etc.)
+    .Theme      *Theme           — resolved theme tokens
+    .Spec       PlatformSpec     — width, height, device scale
+    .Slides     []SlideHTML      — per-slide data: Index (1-based), Total, Layout, *Slide
+    .BaseCSS    string           — contents of base.css (injected inline)
+
+  Each slide is rendered in its own <section class="slide"> and dispatched
+  to the matching layout partial via template name "layout-<name>".
+  The renderer captures each section individually (one PNG per slide).
+*/ -}}
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ .Carousel.Handle }} — Carousel</title>
+
+  {{- /* ── Base stylesheet (inlined so the file:// renderer has no external deps) ── */}}
+  <style>
+{{ .BaseCSS }}
+  </style>
+
+  {{- /* ── Theme CSS variables derived from Theme struct ── */}}
+  <style>
+    :root {
+      --bg-primary:   {{ .Theme.BgPrimary }};
+      --bg-secondary: {{ if .Theme.BgSecondary }}{{ .Theme.BgSecondary }}{{ else }}{{ .Theme.BgPrimary }}{{ end }};
+      --fg-primary:   {{ .Theme.FgPrimary }};
+      --fg-secondary: {{ if .Theme.FgSecondary }}{{ .Theme.FgSecondary }}{{ else }}{{ .Theme.FgPrimary }}{{ end }};
+      --accent:       {{ .Theme.Accent }};
+      --accent-alt:   {{ if .Theme.AccentAlt }}{{ .Theme.AccentAlt }}{{ else }}{{ .Theme.Accent }}{{ end }};
+      --font-heading: '{{ .Theme.FontHeading }}', sans-serif;
+      --font-body:    '{{ .Theme.FontBody }}', 'Noto Color Emoji', sans-serif;
+      --font-quote:   {{ if .Theme.FontQuote }}'{{ .Theme.FontQuote }}', serif{{ else }}'{{ .Theme.FontHeading }}', sans-serif{{ end }};
+    }
+  </style>
+</head>
+<body>
+
+{{- range .Slides }}
+  {{- /* ── One <section> per slide ── */}}
+  <section
+    class="slide{{ if .ToneClass }} {{ .ToneClass }}{{ end }}"
+    id="slide-{{ .Index }}"
+    data-idx="{{ .Index }}"
+    data-layout="{{ .Slide.Layout }}"
+    data-tone="{{ .Slide.Tone }}"
+    data-bg-effect="{{ $.Theme.BackgroundEffect }}"
+    style="width:{{ $.Spec.Width }}px; height:{{ $.Spec.Height }}px;"
+  >
+    {{- /* Dispatch to layout partial */}}
+    {{- if eq .Slide.Layout "cover" }}
+      {{- template "layout-cover" . }}
+    {{- else if eq .Slide.Layout "list" }}
+      {{- template "layout-list" . }}
+    {{- else if eq .Slide.Layout "big-number" }}
+      {{- template "layout-big-number" . }}
+    {{- else if eq .Slide.Layout "quote" }}
+      {{- template "layout-quote" . }}
+    {{- else if eq .Slide.Layout "comparison" }}
+      {{- template "layout-comparison" . }}
+    {{- else if eq .Slide.Layout "screenshot" }}
+      {{- template "layout-screenshot" . }}
+    {{- else if eq .Slide.Layout "cta" }}
+      {{- template "layout-cta" . }}
+    {{- else }}
+      {{- /* fallback: text */}}
+      {{- template "layout-text" . }}
+    {{- end }}
+  </section>
+{{- end }}
+
+</body>
+</html>

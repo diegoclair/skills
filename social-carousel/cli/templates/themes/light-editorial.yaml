@@ -1,0 +1,27 @@
+# light-editorial.yaml — Cream editorial / lifestyle theme
+# ----------------------------------------------------------
+# Style: Premium, creative, wellness, storytelling, personal brand.
+# Palette: Spec D §3 "Cream editorial" row.
+# Accent: Terracotta/rust #C84E31 — warm, earthy, non-tech.
+# Font combo A: Playfair Display (heading) + DM Sans (body).
+# Playfair also used for quotes (font_quote).
+# No background effect — clean white space is the aesthetic.
+name: light-editorial
+description: >
+  Warm cream background with terracotta accent and editorial serif heading.
+  Best for: lifestyle, wellness, personal brand, storytelling.
+  Font combo A (Playfair Display + DM Sans).
+
+bg_primary:   "#F5F0E8"
+bg_secondary: "#EDE8DF"
+fg_primary:   "#1A1A1A"
+fg_secondary: "rgba(26,26,26,0.55)"
+accent:       "#C84E31"
+accent_alt:   "#A03C22"
+
+font_heading: "Playfair Display"
+font_body:    "DM Sans"
+font_quote:   "Playfair Display"
+
+background_effect: ""
+border_style:      ""

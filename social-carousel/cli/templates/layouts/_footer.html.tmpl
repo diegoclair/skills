@@ -1,0 +1,32 @@
+{{- /*
+  _footer.html.tmpl — Common footer partial
+  ------------------------------------------
+  Data context: SlideHTML (same context passed to each layout).
+    .Carousel.Handle         string  — "@username" or empty
+    .Carousel.Logo           string  — path to logo PNG/SVG, or empty
+    .Carousel.ShowSlideNumber *bool  — nil treated as true
+    .Index                   int     — current slide (1-based)
+    .Total                   int     — total slides in carousel
+
+  Rules (spec D §7 brand anchors):
+    U10: handle always shown, opacity >= 0.5
+    U11: slide number always shown as "N/T"
+    Position: absolute bottom-left and bottom-right within 80px padding.
+*/ -}}
+{{define "footer"}}
+<footer class="slide-footer">
+  <span class="slide-footer__handle">
+    {{- if .Carousel.Logo }}
+    <img class="logo" src="{{ .Carousel.Logo }}" alt="" aria-hidden="true">
+    {{- end }}
+    {{- if .Carousel.Handle }}{{ .Carousel.Handle }}{{ end -}}
+  </span>
+  {{- /* ShowSlideNumber: *bool — nil means true (default on).
+       The renderer should resolve *bool to a plain bool and pass ShowSlideNumber
+       as .ShowSlideNumber (bool) in the SlideHTML context.
+       Fallback: if the field is not passed, the number is shown by default. */ -}}
+  {{- if .ShowSlideNumber }}
+  <span class="slide-footer__number">{{ .Index }}/{{ .Total }}</span>
+  {{- end }}
+</footer>
+{{end}}

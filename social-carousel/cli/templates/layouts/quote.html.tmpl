@@ -1,0 +1,93 @@
+{{- /*
+  quote.html.tmpl — Slide layout: PULL QUOTE
+  -------------------------------------------
+  Fields used:
+    .Slide.Quote       string — quote body, ≤25 words (Q1)
+    .Slide.Attribution string — "Nome, Cargo/Contexto" (Q3)
+
+  Spec rules (D §4 Quote):
+    Q1: quote_words <= 25
+    Q2: decorative_quotes CSS pseudo-element, opacity 0.08–0.12
+    Q3: attribution_present (name + context)
+    Q4: different weight from body (italic if body=regular)
+
+  Layout: decorative " in background → quote text centered → attribution below.
+  Font: --font-quote (Playfair Display italic for premium feel).
+  Decorative quotes are pure CSS (::before pseudo-element on wrapper).
+*/ -}}
+{{define "layout-quote"}}
+{{- $qw := wordCount .Slide.Quote -}}
+{{- $qTier := "long" -}}
+{{- if le $qw 10 -}}{{- $qTier = "poster" -}}
+{{- else if le $qw 18 -}}{{- $qTier = "medium" -}}
+{{- end -}}
+<style>
+  .quote-wrapper {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-start;
+    padding-bottom: var(--footer-reserve, 96px);
+    position: relative;
+  }
+
+  /* Decorative opening " — Q2 */
+  .quote-wrapper::before {
+    content: '\201C';           /* " left double quotation mark */
+    position: absolute;
+    top: -40px;
+    left: -20px;
+    font-family: var(--font-quote);
+    font-size: 280px;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--accent);
+    opacity: 0.10;              /* Q2: 0.08–0.12 */
+    pointer-events: none;
+    z-index: 0;
+    user-select: none;
+  }
+
+  .quote-text {
+    position: relative;
+    z-index: 1;
+    font-family: var(--font-quote);
+    font-weight: 700;
+    font-style: italic;         /* Q4: different style from body */
+    line-height: 1.2;
+    letter-spacing: 0em;
+    color: var(--fg-primary);
+    max-width: 900px;
+  }
+  .quote-text--poster { font-size: 96px; }
+  .quote-text--medium { font-size: 72px; }
+  .quote-text--long   { font-size: 56px; line-height: 1.25; }
+
+  .quote-attribution {
+    position: relative;
+    z-index: 1;
+    margin-top: 48px;
+    font-family: var(--font-body);
+    font-size: 34px;            /* Research E §5: 28→34 (mobile ~12pt) */
+    font-weight: 600;
+    line-height: 1.3;
+    letter-spacing: 0.02em;
+    color: var(--accent);
+  }
+
+  /* em-dash prefix for attribution */
+  .quote-attribution::before {
+    content: '— ';
+  }
+</style>
+
+<div class="quote-wrapper">
+  <blockquote class="quote-text quote-text--{{ $qTier }}">{{ highlight .Slide.Quote }}</blockquote>
+  {{- if .Slide.Attribution }}
+  <p class="quote-attribution">{{ highlight .Slide.Attribution }}</p>
+  {{- end }}
+</div>
+
+{{template "footer" .}}
+{{end}}

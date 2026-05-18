@@ -1,0 +1,27 @@
+# neo-brutalist.yaml — Neo-brutalist bold yellow theme
+# ------------------------------------------------------
+# Style: Loud, punchy, attention-grabbing. Design/creative/youth.
+# Palette: High-saturation yellow bg + near-black text and accent.
+# Border style: neo-brutalist (solid border + offset shadow).
+# Font combo B: Space Grotesk (heading) + Inter (body).
+# No background effect — the yellow IS the effect.
+# Note: accent_alt is empty — accent == fg for true mono-brutalist feel.
+name: neo-brutalist
+description: >
+  Bold yellow background with near-black text and neo-brutalist borders.
+  Best for: design, creative, youth brands, high-energy content.
+  Font combo B (Space Grotesk + Inter). Border: neo-brutalist.
+
+bg_primary:   "#FFE066"
+bg_secondary: "#FFD740"
+fg_primary:   "#111827"
+fg_secondary: "rgba(17,24,39,0.60)"
+accent:       "#111827"
+accent_alt:   ""
+
+font_heading: "Space Grotesk"
+font_body:    "Inter"
+font_quote:   ""
+
+background_effect: ""
+border_style:      "neo-brutalist"

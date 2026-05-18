@@ -3,6 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![confluence-docs](https://img.shields.io/github/v/release/diegoclair/skills?filter=confluence-v*&color=11C47E&label=confluence-docs)](https://github.com/diegoclair/skills/releases?q=tag%3Aconfluence-v)
 [![jira-tickets](https://img.shields.io/github/v/release/diegoclair/skills?filter=jira-v*&color=11C47E&label=jira-tickets)](https://github.com/diegoclair/skills/releases?q=tag%3Ajira-v)
+[![social-carousel](https://img.shields.io/github/v/release/diegoclair/skills?filter=carousel-v*&color=11C47E&label=social-carousel)](https://github.com/diegoclair/skills/releases?q=tag%3Acarousel-v)
 [![Claude Skills](https://img.shields.io/badge/Claude-Skills-11C47E)](https://docs.claude.com/en/docs/claude-code/skills)
 
 > Open-source Claude Skills maintained by the **Lybel** team. Works for any company — point each skill at your own Confluence / Jira / etc. PRs welcome.
@@ -13,6 +14,7 @@
 |---|---|---|
 | **`confluence-docs`** | Search, create, classify and update Confluence Cloud pages in natural language. Ships a local Go CLI that returns page digests / single sections instead of full ADF bodies — 10–50× cheaper in tokens than the raw MCP path (which remains as fallback). Includes a `km` subcommand that consolidates a whole space into a typed Knowledge Map, owner `@mention` resolution, real Confluence labels from `:::properties` tags, smart links, and a canonical 5-doc-types spec (`reference/doc-types.md`). | [SKILL.md](./confluence-docs/SKILL.md) |
 | **`jira-tickets`** | Token-efficient Jira Cloud assistant. Shares `pkg/atlassian` with `confluence-docs` (same Atlassian API token via `~/.config/atlassian/credentials`, same ADF format). Commands: `myself`, `search "JQL"`, `issue digest` (~500 B summary), `issue get`, `issue create/update/transition/comment`, `issue transitions` list, `project list/get/update`, `update` (self-update). Epic linking, sprints, boards, attachments, worklogs parked — see [ROADMAP.md](./jira-tickets/ROADMAP.md). | [SKILL.md](./jira-tickets/SKILL.md) |
+| **`social-carousel`** | Generates viral Instagram and LinkedIn carousels from a small YAML brief. Renders locally via headless Chrome (`chromedp`) — zero per-image cost, zero account, no SaaS round-trip. Ships 5 design presets, 7 layout templates (cover, list, big-number, quote, comparison, screenshot, cta), and a linter with 27 research-backed rules (`slide-3 must be value bomb`, `≤12-word hook`, `single CTA`, contrast ≥4.5:1) that blocks render unless `--force`. Commands: `new <kind>`, `check`, `render`, `preview`, `theme list/show/create`, `setup`, `update`. | [SKILL.md](./social-carousel/SKILL.md) |
 
 Next candidates: `figma-files`, `analytics`.
 

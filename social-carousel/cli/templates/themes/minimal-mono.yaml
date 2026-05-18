@@ -1,0 +1,27 @@
+# minimal-mono.yaml — Minimalist monochrome (Justin Welsh style)
+# ---------------------------------------------------------------
+# Style: Clean, high-legibility, content-first. Zero decoration.
+# Palette: Pure white bg, near-black text AND accent (mono-brand).
+# No accent color — the "accent" is just the primary fg used for emphasis.
+# No background effect, no border style, no gradient.
+# Font: Outfit 800 heading + DM Sans body.
+# Best for: LinkedIn educational carousels, frameworks, listicles.
+name: minimal-mono
+description: >
+  White background, near-black text and accent. Zero visual noise.
+  Best for: LinkedIn, educational frameworks, text-heavy content.
+  Inspired by Justin Welsh minimal style. Font: Outfit + DM Sans.
+
+bg_primary:   "#FFFFFF"
+bg_secondary: "#F8FAFC"
+fg_primary:   "#111827"
+fg_secondary: "rgba(17,24,39,0.50)"
+accent:       "#111827"
+accent_alt:   ""
+
+font_heading: "Outfit"
+font_body:    "DM Sans"
+font_quote:   ""
+
+background_effect: ""
+border_style:      ""

@@ -1,0 +1,27 @@
+# dark-tech.yaml — Dark high-contrast tech theme
+# ------------------------------------------------
+# Style: Authority, tech, SaaS, finance, B2B.
+# Palette: Spec D §3 "Dark high-contrast" row.
+# Accent: Volt Mint #11C47E (Lybel brand primary).
+# Background effect: dots — subtle grid that appears at full-size.
+# Font combo D: Outfit (heading) + DM Sans (body).
+# Contrast: white on #0D1117 → ~21:1 (far exceeds WCAG AAA 7:1).
+name: dark-tech
+description: >
+  High-contrast dark background with Volt Mint accent.
+  Best for: tech, SaaS, authority content, B2B.
+  Font combo D (Outfit + DM Sans). Background effect: dots.
+
+bg_primary:   "#0D1117"
+bg_secondary: "#161B22"
+fg_primary:   "#FFFFFF"
+fg_secondary: "rgba(255,255,255,0.60)"
+accent:       "#11C47E"
+accent_alt:   "#0EA5E9"
+
+font_heading: "Outfit"
+font_body:    "DM Sans"
+font_quote:   ""
+
+background_effect: "dots"
+border_style:      ""

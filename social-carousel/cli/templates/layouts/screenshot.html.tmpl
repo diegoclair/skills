@@ -1,0 +1,204 @@
+{{- /*
+  screenshot.html.tmpl — Slide layout: DEVICE SCREENSHOT MOCKUP
+  -------------------------------------------------------------
+  Fields used:
+    .Slide.Title      string — short title at top, 48px (optional)
+    .Slide.Image      string — relative path to screenshot PNG
+    .Slide.DeviceKind string — "iphone" | "browser" | "android" | "" (no frame)
+    .Slide.Caption    string — explanation below mockup, ≤2 lines (S3)
+
+  Spec rules (D §4 Screenshot):
+    S1: device_mockup_present (frame applied via CSS)
+    S2: no_text_overlaid_on_screenshot
+    S3: caption_lines <= 2 (32px)
+    S4: mockup_shadow_present (4-layer box-shadow)
+
+  DeviceKind="iphone": border-radius 48px + 12px bezel + notch
+  DeviceKind="browser": chrome bar with 3 dots at top
+  DeviceKind="android": similar to iphone with 24px radius
+  DeviceKind="": plain shadow box
+
+  The screenshot image fills the frame via object-fit:cover.
+  Caption is always below the mockup — never overlaid.
+*/ -}}
+{{define "layout-screenshot"}}
+<style>
+  .screenshot-title {
+    font-family: var(--font-heading);
+    font-size: 48px;
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+    color: var(--fg-primary);
+    margin-bottom: 40px;
+    max-width: 900px;
+  }
+
+  .screenshot-mockup-wrap {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 32px;
+    padding-bottom: 96px;
+  }
+
+  /* Generic mockup frame */
+  .mockup {
+    position: relative;
+    display: inline-block;
+    max-width: 100%;
+  }
+
+  /* 4-layer realistic shadow — spec D §5, S4 */
+  .mockup-shadow {
+    box-shadow:
+      0 4px 6px rgba(0, 0, 0, 0.10),
+      0 16px 32px rgba(0, 0, 0, 0.20),
+      0 32px 64px rgba(0, 0, 0, 0.15),
+      0 64px 80px rgba(0, 0, 0, 0.08);
+  }
+
+  /* iPhone frame */
+  .mockup--iphone {
+    border-radius: 48px;
+    border: 12px solid #1C1C1E;  /* near-black bezel */
+    overflow: hidden;
+    background: #1C1C1E;
+  }
+
+  .mockup--iphone::before {
+    /* Dynamic Island / notch */
+    content: '';
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 120px;
+    height: 28px;
+    background: #1C1C1E;
+    border-radius: 20px;
+    z-index: 2;
+  }
+
+  .mockup--iphone img {
+    display: block;
+    width: 480px;               /* fixed width; height auto-scales */
+    max-height: 700px;
+    object-fit: cover;
+    object-position: top;
+  }
+
+  /* Android frame */
+  .mockup--android {
+    border-radius: 28px;
+    border: 10px solid #111;
+    overflow: hidden;
+    background: #111;
+  }
+
+  .mockup--android img {
+    display: block;
+    width: 480px;
+    max-height: 700px;
+    object-fit: cover;
+    object-position: top;
+  }
+
+  /* Browser chrome bar */
+  .mockup--browser {
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid rgba(128,128,128,0.25);
+    background: var(--bg-secondary, #1a1a1a);
+  }
+
+  .browser-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    background: var(--bg-secondary, #1a1a1a);
+    border-bottom: 1px solid rgba(128,128,128,0.15);
+  }
+
+  .browser-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .browser-dot--red   { background: #FF5F57; }
+  .browser-dot--amber { background: #FEBC2E; }
+  .browser-dot--green { background: #28C840; }
+
+  .mockup--browser img {
+    display: block;
+    width: 860px;
+    max-height: 580px;
+    object-fit: cover;
+    object-position: top;
+  }
+
+  /* No frame — just the image with shadow */
+  .mockup--none img {
+    display: block;
+    width: 820px;
+    max-height: 700px;
+    object-fit: contain;
+    border-radius: 8px;
+  }
+
+  .screenshot-caption {
+    font-family: var(--font-body);
+    font-size: 32px;
+    font-weight: 400;
+    line-height: 1.45;
+    color: var(--fg-secondary);
+    max-width: 820px;
+    text-align: center;
+  }
+</style>
+
+<div class="content-area">
+  {{- if .Slide.Title }}
+  <h2 class="screenshot-title">{{ .Slide.Title }}</h2>
+  {{- end }}
+
+  <div class="screenshot-mockup-wrap">
+    {{- if eq .Slide.DeviceKind "iphone" }}
+    <div class="mockup mockup--iphone mockup-shadow">
+      <img src="{{ .Slide.Image }}" alt="Screenshot" loading="eager">
+    </div>
+
+    {{- else if eq .Slide.DeviceKind "android" }}
+    <div class="mockup mockup--android mockup-shadow">
+      <img src="{{ .Slide.Image }}" alt="Screenshot" loading="eager">
+    </div>
+
+    {{- else if eq .Slide.DeviceKind "browser" }}
+    <div class="mockup mockup--browser mockup-shadow">
+      <div class="browser-bar" aria-hidden="true">
+        <span class="browser-dot browser-dot--red"></span>
+        <span class="browser-dot browser-dot--amber"></span>
+        <span class="browser-dot browser-dot--green"></span>
+      </div>
+      <img src="{{ .Slide.Image }}" alt="Screenshot" loading="eager">
+    </div>
+
+    {{- else }}
+    <div class="mockup mockup--none mockup-shadow">
+      <img src="{{ .Slide.Image }}" alt="Screenshot" loading="eager">
+    </div>
+    {{- end }}
+
+    {{- if .Slide.Caption }}
+    <p class="screenshot-caption">{{ .Slide.Caption }}</p>
+    {{- end }}
+  </div>
+</div>
+
+{{template "footer" .}}
+{{end}}

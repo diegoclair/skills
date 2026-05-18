@@ -5,4 +5,5 @@ use (
 	./jira-tickets/cli
 	./pkg/atlassian
 	./pkg/release
+	./social-carousel/cli
 )

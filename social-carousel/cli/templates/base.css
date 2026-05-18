@@ -1,0 +1,580 @@
+/*
+ * base.css — Social Carousel Template System
+ * Applied to every slide via inline <style> injection by the Go renderer.
+ * Canvas: 1080×1350 (portrait 4:5) or 1080×1080 (square 1:1).
+ * Render target: chromedp headless Chrome @2x → 2160×2700 px PNG.
+ *
+ * CSS variables are injected by the renderer from Theme struct fields.
+ * See templates/themes/*.yaml for preset values.
+ */
+
+/* ─── FONT FACES ─────────────────────────────────────────────────────────── */
+
+/* Outfit — heading */
+@font-face {
+  font-family: 'Outfit';
+  src: url('./assets/fonts/Outfit-700.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: 'Outfit';
+  src: url('./assets/fonts/Outfit-800.woff2') format('woff2');
+  font-weight: 800;
+  font-style: normal;
+  font-display: block;
+}
+
+/* DM Sans — body */
+@font-face {
+  font-family: 'DM Sans';
+  src: url('./assets/fonts/DMSans-400.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: 'DM Sans';
+  src: url('./assets/fonts/DMSans-500.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: 'DM Sans';
+  src: url('./assets/fonts/DMSans-700.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: block;
+}
+
+/* Playfair Display — quote (optional) */
+@font-face {
+  font-family: 'Playfair Display';
+  src: url('./assets/fonts/PlayfairDisplay-700.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: 'Playfair Display';
+  src: url('./assets/fonts/PlayfairDisplay-700italic.woff2') format('woff2');
+  font-weight: 700;
+  font-style: italic;
+  font-display: block;
+}
+
+/* Space Grotesk — neo-brutalist heading */
+@font-face {
+  font-family: 'Space Grotesk';
+  src: url('./assets/fonts/SpaceGrotesk-600.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: 'Space Grotesk';
+  src: url('./assets/fonts/SpaceGrotesk-700.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: block;
+}
+
+/* Inter — tech body */
+@font-face {
+  font-family: 'Inter';
+  src: url('./assets/fonts/Inter-400.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: 'Inter';
+  src: url('./assets/fonts/Inter-500.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: block;
+}
+
+/* Noto Color Emoji — colorful emoji fallback */
+@font-face {
+  font-family: 'Noto Color Emoji';
+  src: url('./assets/fonts/NotoColorEmoji-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+
+/* ─── RESET ──────────────────────────────────────────────────────────────── */
+
+*,
+*::before,
+*::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+}
+
+/* ─── CSS CUSTOM PROPERTIES (theme tokens) ───────────────────────────────── */
+/*
+ * These are the default fallbacks. The Go renderer overrides every variable
+ * via a <style> block injected after this stylesheet, derived from Theme YAML.
+ *
+ *   --bg-primary     main slide background
+ *   --bg-secondary   optional alt background (cards, sections)
+ *   --fg-primary     primary text color
+ *   --fg-secondary   muted text (captions, handle, slide number)
+ *   --accent         primary brand accent (CTAs, badges, highlights)
+ *   --accent-alt     secondary accent (gradient text end, optional)
+ *   --font-heading   heading font-family name
+ *   --font-body      body font-family name
+ *   --font-quote     quote font-family name (defaults to font-heading)
+ *   --bg-effect      background effect type: "" | "dots" | "grid" | "halo"
+ *   --border-style   "" | "frame" | "accent-line" | "neo-brutalist"
+ */
+:root {
+  --bg-primary:    #0D1117;
+  --bg-secondary:  #1A2332;
+  --fg-primary:    #FFFFFF;
+  --fg-secondary:  rgba(255, 255, 255, 0.6);
+  --accent:        #11C47E;
+  --accent-alt:    #0EA5E9;
+  --font-heading:  'Outfit', sans-serif;
+  --font-body:     'DM Sans', 'Noto Color Emoji', sans-serif;
+  --font-quote:    'Playfair Display', serif;
+  --bg-effect:     '';
+  --border-style:  '';
+}
+
+/* ─── SLIDE CONTAINER ────────────────────────────────────────────────────── */
+
+.slide {
+  position: relative;
+  width: 1080px;
+  height: 1350px;               /* portrait default; overridden inline for 1:1 */
+  background-color: var(--bg-primary);
+  color: var(--fg-primary);
+  font-family: var(--font-body);
+  overflow: hidden;
+  padding: 80px;                /* U2: padding >= 80px all sides */
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+
+/*
+ * Platform override: when platform=square the renderer injects
+ *   style="height:1080px" on the .slide element.
+ */
+
+/* ─── BACKGROUND EFFECTS ─────────────────────────────────────────────────── */
+
+/* Applied via data-bg-effect attribute set by the renderer */
+
+.slide[data-bg-effect="dots"]::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.12) 1px, transparent 1px);
+  background-size: 32px 32px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Comparison and quote layouts use side-tinted regions / decorative
+   pseudo-elements — the slide-level dotted/grid pattern compounds visual
+   noise on top of those, so suppress it for those layouts. */
+.slide[data-layout="comparison"][data-bg-effect="dots"]::before,
+.slide[data-layout="comparison"][data-bg-effect="grid"]::before {
+  display: none;
+}
+
+.slide[data-bg-effect="grid"]::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+  background-size: 60px 60px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.slide[data-bg-effect="halo"]::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    ellipse 70% 50% at 50% 45%,
+    color-mix(in srgb, var(--accent) 18%, transparent) 0%,
+    transparent 70%
+  );
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Ensure all direct children of .slide sit above the background effect */
+.slide > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* ─── TONE OVERRIDES ─────────────────────────────────────────────────────── */
+/*
+ * Slide.Tone provides a per-slide override of the carousel's theme bg/fg/accent
+ * to break monotony across a 10-slide deck (Research D §7, audit F-2.2). The
+ * rotation A=authority / B=clarity / C=spotlight is the prescribed default.
+ * Only bg/fg + accent-derived primitives are restyled — the typographic scale
+ * is left alone so font sizes stay consistent across the carousel.
+ */
+
+.slide[data-tone="authority"] {
+  /* Dark variant — keeps accent. Identity-like when the theme is already dark. */
+  background-color: var(--bg-primary);
+  color: var(--fg-primary);
+}
+
+.slide[data-tone="clarity"] {
+  /* Light variant — invert. Themes can define --bg-clarity / --fg-clarity
+     to control the exact palette; fall back to a neutral ice-white pair. */
+  background-color: var(--bg-clarity, #F8FAFC);
+  color: var(--fg-clarity, #0F172A);
+}
+
+.slide[data-tone="spotlight"] {
+  background-color: var(--accent);
+  color: #FFFFFF;
+}
+
+/* On a spotlight slide the accent IS the background, so primitives that
+   normally render in accent-color have to flip to white (text only — never
+   set background:#FFF on .keyword-accent or you paint a white block over
+   the highlighted phrase). The cover-anchor is a solid-color bar and is
+   the only one that needs both color + background-color. */
+.slide[data-tone="spotlight"] .bignumber-number,
+.slide[data-tone="spotlight"] .keyword-accent {
+  color: #FFFFFF;
+  font-weight: 900;
+}
+.slide[data-tone="spotlight"] .cover-anchor {
+  background-color: #FFFFFF;
+}
+
+/* Spotlight text slides need the typographic treatment of a pull-quote —
+   the text IS the slide. A small bar above feels like a divider gone
+   wrong (per reference/examples.md: Chris Do uses decorative quote marks
+   as background, Alić oversized hook + negative space, never thin
+   accent strokes as anchors). Two overrides:
+     1. Bump font sizes one tier — poster→168px, medium→120px — so the
+        text dominates instead of floating.
+     2. Add an oversized white "“” mark behind the text at 10% opacity,
+        same role as .quote-wrapper::before on the quote layout. */
+.slide[data-tone="spotlight"][data-layout="text"] .text-wrapper {
+  position: relative;
+}
+.slide[data-tone="spotlight"][data-layout="text"] .text-wrapper::before {
+  content: '\201C';                /* opening curly quote */
+  position: absolute;
+  top: 100px;
+  left: 20px;
+  font-family: var(--font-heading);
+  font-size: 480px;
+  font-weight: 900;
+  line-height: 0.8;
+  color: #FFFFFF;
+  opacity: 0.14;
+  pointer-events: none;
+  z-index: 0;
+  user-select: none;
+}
+.slide[data-tone="spotlight"][data-layout="text"] .text-wrapper::after {
+  content: '\201D';                /* closing curly quote — mirrors Chris Do
+                                      pull-quote framing, balances the
+                                      empty lower-right quadrant */
+  position: absolute;
+  bottom: 60px;
+  right: 20px;
+  font-family: var(--font-heading);
+  font-size: 480px;
+  font-weight: 900;
+  line-height: 0.8;
+  color: #FFFFFF;
+  opacity: 0.14;
+  pointer-events: none;
+  z-index: 0;
+  user-select: none;
+}
+.slide[data-tone="spotlight"][data-layout="text"] .text-body {
+  position: relative;
+  z-index: 1;
+}
+.slide[data-tone="spotlight"][data-layout="text"] .text-body--poster { font-size: 168px; line-height: 1.0; }
+.slide[data-tone="spotlight"][data-layout="text"] .text-body--medium { font-size: 120px; line-height: 1.05; }
+.slide[data-tone="spotlight"][data-layout="text"] .text-body--long   { font-size: 84px;  line-height: 1.2; }
+
+/* ─── TYPOGRAPHY SCALE ───────────────────────────────────────────────────── */
+/*
+ * Rule: canvas 1080px → these px values map 1:1 to screen px at 1× DPI.
+ * Renderer captures @2× → exported PNG is 2160px wide.
+ * Hard minimums per spec D §2:
+ *   body: 36px (absolute min 32px)
+ *   label/caption: 24px
+ */
+
+/* Hook — slide 1 gigantic headline */
+.hook {
+  font-family: var(--font-heading);
+  font-size: 96px;              /* spec: 96–144px */
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  max-width: 900px;
+  color: var(--fg-primary);
+}
+
+/* Hook sub / microcopy line */
+.hook-sub {
+  font-family: var(--font-body);
+  font-size: 36px;
+  font-weight: 400;
+  line-height: 1.4;
+  letter-spacing: 0.01em;
+  color: var(--fg-secondary);
+}
+
+/* Slide title — intermediate slides */
+.title {
+  font-family: var(--font-heading);
+  font-size: 64px;              /* spec: 48–64px */
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  color: var(--fg-primary);
+}
+
+/* Body copy */
+.body {
+  font-family: var(--font-body);
+  font-size: 36px;              /* hard min 32px */
+  font-weight: 400;
+  line-height: 1.5;
+  letter-spacing: 0.005em;
+  max-width: 820px;
+  color: var(--fg-primary);
+}
+
+/* Label / caption — uppercase tag, handle, slide number */
+.label {
+  font-family: var(--font-body);
+  font-size: 24px;              /* hard min 24px */
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--fg-secondary);
+}
+
+/* CTA headline */
+.cta-headline {
+  font-family: var(--font-heading);
+  font-size: 72px;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  color: var(--fg-primary);
+}
+
+/* ─── KEYWORD HIGHLIGHT HELPERS ──────────────────────────────────────────── */
+
+/* Technique 1: yellow highlighter strip */
+.keyword-highlight {
+  background: #FFE066;
+  color: #111827;
+  padding: 2px 8px;
+  border-radius: 4px;
+  display: inline;
+}
+
+/* Technique 2: accent color swap */
+.keyword-accent {
+  color: var(--accent);
+  font-weight: 800;
+}
+
+/* Technique 3: underline decorative */
+.keyword-underline {
+  text-decoration: underline;
+  text-decoration-color: var(--accent);
+  text-decoration-thickness: 4px;
+  text-underline-offset: 6px;
+}
+
+/* Technique 4: box frame */
+.keyword-box {
+  border: 3px solid var(--accent);
+  padding: 4px 12px;
+  border-radius: 6px;
+  display: inline-block;
+}
+
+/* ─── GRADIENT TEXT ──────────────────────────────────────────────────────── */
+
+.gradient-text {
+  background: linear-gradient(90deg, var(--accent), var(--accent-alt, var(--accent)));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ─── BORDER STYLE HELPERS ───────────────────────────────────────────────── */
+
+.border-frame {
+  border: 3px solid var(--accent);
+  border-radius: 12px;
+  padding: 24px;
+}
+
+.border-accent-line {
+  border-left: 6px solid var(--accent);
+  padding-left: 24px;
+}
+
+.border-neo-brutalist {
+  border: 3px solid var(--fg-primary);
+  box-shadow: 5px 5px 0px var(--fg-primary);
+  border-radius: 8px;
+}
+
+/* ─── SHADOW HELPERS ─────────────────────────────────────────────────────── */
+
+/* Realistic shadow — device mockups, floating cards */
+.shadow-realistic {
+  box-shadow:
+    0 4px 6px rgba(0, 0, 0, 0.07),
+    0 10px 15px rgba(0, 0, 0, 0.10),
+    0 20px 25px rgba(0, 0, 0, 0.07),
+    0 40px 55px rgba(0, 0, 0, 0.05);
+}
+
+/* Deep shadow for device mockups (4 layers per spec D §5) */
+.shadow-device {
+  box-shadow:
+    0 4px 6px rgba(0, 0, 0, 0.10),
+    0 16px 32px rgba(0, 0, 0, 0.20),
+    0 32px 64px rgba(0, 0, 0, 0.15),
+    0 64px 80px rgba(0, 0, 0, 0.08);
+}
+
+/* Flat brand shadow — neo-brutalist style */
+.shadow-flat-brand {
+  box-shadow: 6px 6px 0px var(--accent);
+}
+
+/* Glass shadow */
+.shadow-glass {
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+/* ─── FOOTER (brand anchor) ──────────────────────────────────────────────── */
+/*
+ * Every slide has a footer at the bottom with:
+ *   left:  handle (@username)
+ *   right: slide number (N/T)
+ * Position: absolute, bottom ~56px, left/right 80px.
+ * Stays inside the 80px padding zone = always within safe-zone.
+ * U10: handle_present; U11: slide_number_present
+ */
+
+.slide-footer {
+  position: absolute;
+  bottom: 56px;
+  left: 80px;
+  right: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 10;
+}
+
+.slide-footer__handle {
+  font-family: var(--font-body);
+  font-size: 24px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--fg-secondary);
+  opacity: 0.7;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.slide-footer__handle img.logo {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  opacity: 0.8;
+  border-radius: 50%;
+}
+
+.slide-footer__number {
+  font-family: var(--font-body);
+  font-size: 24px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  color: var(--fg-secondary);
+  opacity: 0.5;
+}
+
+/* ─── LAYOUT UTILITY CLASSES ─────────────────────────────────────────────── */
+
+.content-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  /* leaves room for footer: 56px bottom + 40px buffer */
+  padding-bottom: 96px;
+}
+
+.center-v   { justify-content: center; }
+.center-h   { align-items: center; }
+.center-both { justify-content: center; align-items: center; }
+
+.gap-8  { gap: 8px; }
+.gap-16 { gap: 16px; }
+.gap-24 { gap: 24px; }
+.gap-32 { gap: 32px; }
+.gap-40 { gap: 40px; }
+.gap-48 { gap: 48px; }
+
+.mt-16 { margin-top: 16px; }
+.mt-24 { margin-top: 24px; }
+.mt-32 { margin-top: 32px; }
+.mt-40 { margin-top: 40px; }
+.mt-48 { margin-top: 48px; }
+.mt-56 { margin-top: 56px; }
+.mt-64 { margin-top: 64px; }
+
+.text-center { text-align: center; }
+.text-left   { text-align: left; }
+
+/* ─── SWIPE INDICATOR ────────────────────────────────────────────────────── */
+
+.swipe-indicator {
+  font-family: var(--font-body);
+  font-size: 36px;
+  color: var(--fg-secondary);
+  opacity: 0.6;
+  line-height: 1;
+}

@@ -33,9 +33,18 @@ vendor/
 /build/
 */cli/bin/
 */cli/dist/
-*/bin/confluence-docs
-*/bin/confluence-docs.exe
+# Skill-root bin/ (some skills install via `make install-local` and produce
+# the binary at <skill>/bin/<skill> instead of <skill>/cli/bin/<skill>).
+*/bin/
 release-assets/
+
+# Fonts are downloaded by `make fonts` and embedded into the binary at
+# build time via go:embed. They are NOT source — release CI re-downloads
+# them before cross-compiling, so contributors run `make fonts` once and
+# from then on `make build` reuses them. Excluding here keeps git diffs
+# clean and avoids 12 MB of binary churn in PRs.
+social-carousel/cli/templates/fonts/*.woff2
+social-carousel/cli/templates/fonts/*.ttf
 
 # ============================================================
 # macOS
@@ -106,7 +115,7 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Stray binary from `go build ./...` run inside confluence-docs/cli/
-# (Go names the binary after the package directory; we want it in bin/)
-confluence-docs/cli/cli
-jira-tickets/cli/cli
+# Stray binaries from `go build ./...` run inside any <skill>/cli/.
+# (Go names the binary after the package directory; we want it in bin/.)
+*/cli/cli
+*/cli/cli.exe

@@ -1,0 +1,27 @@
+# duotone-deep.yaml — Deep duotone blue theme
+# --------------------------------------------
+# Style: Authority, depth, finance, professional. Mid-tone background.
+# Palette: Spec D §3 "Mid-tone bold" row — deep blue + light blue accent.
+# Contrast: #60A5FA on #1E3A5F → ~5.8:1 (passes WCAG AA for large text).
+# Background effect: halo — radial glow behind center elements.
+# Font combo D: Outfit (heading) + DM Sans (body).
+# Best for: CTA slides, big-number, cover — high authority feel.
+name: duotone-deep
+description: >
+  Deep ocean blue background with light sky-blue accent.
+  Best for: authority content, financial/professional topics, impact slides.
+  Font combo D (Outfit + DM Sans). Background effect: halo.
+
+bg_primary:   "#1E3A5F"
+bg_secondary: "#162D4A"
+fg_primary:   "#FFFFFF"
+fg_secondary: "rgba(255,255,255,0.60)"
+accent:       "#60A5FA"
+accent_alt:   "#93C5FD"
+
+font_heading: "Outfit"
+font_body:    "DM Sans"
+font_quote:   ""
+
+background_effect: "halo"
+border_style:      ""

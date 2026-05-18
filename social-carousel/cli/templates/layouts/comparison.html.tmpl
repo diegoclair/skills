@@ -1,0 +1,173 @@
+{{- /*
+  comparison.html.tmpl — Slide layout: COMPARISON (before/after)
+  ---------------------------------------------------------------
+  Fields used:
+    .Slide.BeforeLabel string   — label for "before" column, e.g. "ANTES"
+    .Slide.BeforeItems []string — negative items (≤2 per spec R2)
+    .Slide.AfterLabel  string   — label for "after" column, e.g. "DEPOIS"
+    .Slide.AfterItems  []string — positive items (≤2 per spec R2)
+    .Slide.Orientation string   — "" | "auto" | "horizontal" | "vertical"
+
+  Orientation auto-rule: if max(len(beforeItems), len(afterItems)) ≤ 2 we
+  render vertically (top/bottom rows, full canvas width). Beyond 2 items
+  per side, side-by-side reads better and items have room to breathe.
+
+  Spec rules (D §4 Comparison):
+    R1: sides = 2
+    R2: items_per_side <= 2
+    R3: side_bg_negative = rgba(239,68,68,0.08)
+    R4: side_bg_positive = rgba(16,185,129,0.08)
+    R5: icon ✗ and ✓ at 48px
+
+  Markdown-style **emphasis** in labels and items renders in the accent color.
+*/ -}}
+{{define "layout-comparison"}}
+{{- $maxItems := len .Slide.BeforeItems -}}
+{{- if gt (len .Slide.AfterItems) $maxItems -}}{{- $maxItems = len .Slide.AfterItems -}}{{- end -}}
+{{- $orientation := .Slide.Orientation -}}
+{{- if or (eq $orientation "") (eq $orientation "auto") -}}
+  {{- if le $maxItems 2 -}}{{- $orientation = "vertical" -}}{{- else -}}{{- $orientation = "horizontal" -}}{{- end -}}
+{{- end -}}
+<style>
+  .comparison {
+    flex: 1;
+    display: grid;
+    gap: 0;                      /* removed gap — let the split be a single hard line */
+    /* Extend to canvas edges by compensating for parent's 80px padding. */
+    margin: -32px -80px 0 -80px;
+    padding-bottom: 120px;       /* leave room for the footer */
+  }
+
+  .comparison--horizontal {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr;
+  }
+
+  .comparison--vertical {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 1fr;
+  }
+
+  /* Reference: Broekema's brand-locked comparison frames + Alić's
+     oversized typographic hierarchy. NO bg fill on the sides — full-color
+     section tints created a striped/layered look (slate → wine → green →
+     slate) that fought the unified theme palette. Instead, the slide
+     canvas stays uniform and the comparison is carried by:
+       - icons (✗ coral / ✓ theme accent) as hero elements
+       - bold typographic hierarchy in labels + items
+       - a thin accent stripe on the top edge of each side as semantic
+         anchor without painting the region. */
+  .comparison-col {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 72px 88px;
+    gap: 40px;
+    background-image: none;      /* suppress dotted pattern — visual noise on a dense comparison */
+    position: relative;
+    border-top: 4px solid transparent;
+  }
+  .comparison-col--before {
+    border-top-color: rgba(232, 130, 110, 0.55);
+  }
+  .comparison-col--after {
+    border-top-color: var(--accent);
+  }
+
+  .comparison-head {
+    display: flex;
+    align-items: center;
+    gap: 28px;
+  }
+
+  .comparison-icon {
+    font-size: 100px;            /* hero element — paridade com items */
+    line-height: 1;
+    flex-shrink: 0;
+    font-weight: 900;
+  }
+
+  .comparison-icon--before {
+    color: rgb(232, 130, 110);   /* warm coral — matches desaturated before tint */
+  }
+
+  .comparison-icon--after {
+    color: var(--accent);        /* brand accent — matches after tint */
+  }
+
+  .comparison-label {
+    font-family: var(--font-body);
+    font-size: 34px;             /* was 26 — now reads at thumbnail */
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--fg-primary);
+    opacity: 1;                  /* full strength — opacity:0.85 muted it on dark */
+  }
+
+  .comparison-items {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    list-style: none;
+  }
+
+  /* Item sizing: 1-2 short items per side get poster weight. 3-4 items
+     scale down to fit. Numbers match Alić's "oversized hook" discipline:
+     the words ARE the message, so let them carry the slide. */
+  .comparison-items li {
+    font-family: var(--font-heading); /* heading font — comparisons are statements, not paragraphs */
+    font-weight: 700;
+    line-height: 1.2;
+    color: var(--fg-primary);
+    letter-spacing: -0.01em;
+  }
+
+  .comparison--vertical .comparison-items li { font-size: 64px; }
+  .comparison--horizontal .comparison-items li { font-size: 48px; }
+
+  /* When a side has only one item, push to poster tier (single statement). */
+  .comparison-col[data-items="1"] .comparison-items li { font-size: 88px; }
+
+  /* When 3+ items, scale down so nothing overflows. */
+  .comparison-col[data-items="3"] .comparison-items li,
+  .comparison-col[data-items="4"] .comparison-items li {
+    font-size: 44px;
+    line-height: 1.25;
+  }
+</style>
+
+<div class="comparison comparison--{{ $orientation }}">
+  {{- /* BEFORE side */}}
+  <div class="comparison-col comparison-col--before" data-items="{{ len .Slide.BeforeItems }}">
+    <div class="comparison-head">
+      <span class="comparison-icon comparison-icon--before" aria-hidden="true">✗</span>
+      {{- if .Slide.BeforeLabel }}
+      <p class="comparison-label">{{ highlight .Slide.BeforeLabel }}</p>
+      {{- end }}
+    </div>
+    <ul class="comparison-items">
+      {{- range .Slide.BeforeItems }}
+      <li>{{ highlight . }}</li>
+      {{- end }}
+    </ul>
+  </div>
+
+  {{- /* AFTER side */}}
+  <div class="comparison-col comparison-col--after" data-items="{{ len .Slide.AfterItems }}">
+    <div class="comparison-head">
+      <span class="comparison-icon comparison-icon--after" aria-hidden="true">✓</span>
+      {{- if .Slide.AfterLabel }}
+      <p class="comparison-label">{{ highlight .Slide.AfterLabel }}</p>
+      {{- end }}
+    </div>
+    <ul class="comparison-items">
+      {{- range .Slide.AfterItems }}
+      <li>{{ highlight . }}</li>
+      {{- end }}
+    </ul>
+  </div>
+</div>
+
+{{template "footer" .}}
+{{end}}

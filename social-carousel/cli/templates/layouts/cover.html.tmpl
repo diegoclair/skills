@@ -1,0 +1,139 @@
+{{- /*
+  cover.html.tmpl — Slide layout: COVER (slide 1)
+  -------------------------------------------------
+  Fields used:
+    .Slide.Label      string — small uppercase tag at top, e.g. "PRESTADOR AUTÔNOMO"
+    .Slide.Hook       string — gigantic headline, ≤12 words (C1, C2)
+    .Slide.Sub        string — microcopy line below the hook, ≤10 words (C6)
+    .Slide.HookStyle  string — "" (default, solid) | "gradient" (linear accent→accent_alt)
+
+  Spec rules (D §4 Cover):
+    C1: hook_words <= 12
+    C2: hook_font_size >= 80px (we use 96px base)
+    C3: hook_contrast >= 7:1
+    C4: swipe_indicator_present (→ bottom right)
+    C5: logo_size <= 60px (handled by footer)
+    C6: microcopy_words <= 10
+
+  Gradient is OPT-IN per slide (Research D §3 — gradient as primary visual
+  identity is an anti-pattern). Set `hook_style: gradient` on the slide and
+  ensure the theme has accent_alt; otherwise the hook stays solid (accent).
+  Layout: label top → hook center-high → sub below → swipe indicator bottom-right.
+*/ -}}
+{{define "layout-cover"}}
+{{- $hw := wordCount .Slide.Hook -}}
+{{- $hookTier := "long" -}}
+{{- if le $hw 6 -}}{{- $hookTier = "poster" -}}
+{{- else if le $hw 9 -}}{{- $hookTier = "medium" -}}
+{{- end -}}
+<style>
+  /* The cover composes label + hook + sub as ONE vertical block centered
+     in the upper-middle of the canvas (≈40% from top — classic thumbnail
+     composition that reads from a phone preview). An accent bar below sub
+     anchors the bottom so the slide never feels like content fell to the
+     top while the canvas waited empty. Reference: Alić's typographic
+     covers, Justin Welsh's centered-block layout. */
+  .cover-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-start;
+    gap: 32px;
+    padding-bottom: var(--footer-reserve, 120px);
+  }
+
+  .cover-label {
+    font-family: var(--font-body);
+    font-size: 24px;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--fg-secondary);
+    opacity: 0.7;
+    margin: 0;
+  }
+
+  .cover-hook {
+    font-family: var(--font-heading);
+    font-weight: 800;
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+    max-width: 900px;
+    color: var(--fg-primary);
+    margin: 0;
+    /* Break only between words, never hyphenate inside one — "7 mistakes
+       that cost you clients" must never render as "...cli-/ents...". */
+    word-break: normal;
+    overflow-wrap: break-word;
+    hyphens: none;
+  }
+
+  /* Length-responsive hook size: a 4-word hook reads as poster; a 12-word
+     hook stays legible without wrapping to 4 lines. */
+  .cover-hook--poster { font-size: 144px; line-height: 1.0; }
+  .cover-hook--medium { font-size: 112px; }
+  .cover-hook--long   { font-size: 88px;  line-height: 1.1; }
+
+  /* Visual anchor — a short accent bar below the sub. Keeps the composition
+     from feeling top-heavy on slides where hook + sub together fill < 50%
+     of the canvas height. */
+  .cover-anchor {
+    width: 96px;
+    height: 6px;
+    background-color: var(--accent);
+    border-radius: 3px;
+    margin-top: 16px;
+  }
+
+  /* Gradient variant — applied when accent-alt differs from accent */
+  .cover-hook.use-gradient {
+    background: linear-gradient(100deg, var(--accent), var(--accent-alt));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .cover-sub {
+    font-family: var(--font-body);
+    font-size: 36px;
+    font-weight: 400;
+    line-height: 1.4;
+    letter-spacing: 0.01em;
+    color: var(--fg-secondary);
+    max-width: 820px;
+    margin: 0;
+  }
+
+  .cover-swipe {
+    position: absolute;
+    bottom: 56px;
+    right: 80px;
+    font-size: 40px;
+    color: var(--fg-secondary);
+    opacity: 0.6;
+    z-index: 10;
+    /* do not overlap the slide number — offset left if number shown */
+    margin-right: 80px;
+  }
+</style>
+
+<div class="cover-content">
+  {{- if .Slide.Label }}
+  <p class="cover-label">{{ .Slide.Label }}</p>
+  {{- end }}
+
+  <h1 class="cover-hook cover-hook--{{ $hookTier }}{{ if and (eq .Slide.HookStyle "gradient") $.Theme.AccentAlt }} use-gradient{{ end }}">{{ highlight .Slide.Hook }}</h1>
+
+  {{- if .Slide.Sub }}
+  <p class="cover-sub">{{ highlight .Slide.Sub }}</p>
+  {{- end }}
+
+  <div class="cover-anchor" aria-hidden="true"></div>
+</div>
+
+{{- /* Swipe cue — C4 */}}
+<span class="cover-swipe" aria-hidden="true">→</span>
+
+{{template "footer" .}}
+{{end}}
